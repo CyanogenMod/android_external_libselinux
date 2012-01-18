@@ -12,9 +12,6 @@
 /* selinuxfs magic number */
 #define SELINUX_MAGIC 0xf97cff8c
 
-/* Preferred selinux mount location */
-#define SELINUXMNT "/selinux"
-
 /* selinuxfs mount point */
 extern char *selinux_mnt;
 
