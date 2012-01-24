@@ -6,7 +6,14 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <dlfcn.h>
+
+#ifdef DARWIN
+#include <sys/param.h>
+#include <sys/mount.h>
+#else
 #include <sys/vfs.h>
+#endif
+
 #include <stdint.h>
 #include <limits.h>
 
