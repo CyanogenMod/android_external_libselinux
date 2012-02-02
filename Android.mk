@@ -1,3 +1,5 @@
+ifeq ($(HAVE_SELINUX), true)
+
 LOCAL_PATH:= $(call my-dir)
 
 common_SRC_FILES := \
@@ -68,3 +70,5 @@ LOCAL_COPY_HEADERS_TO := $(common_COPY_HEADERS_TO)
 LOCAL_COPY_HEADERS := $(common_COPY_HEADERS)
 LOCAL_PRELINK_MODULE := false
 include $(BUILD_SHARED_LIBRARY)
+
+endif # ifeq ($(HAVE_SELINUX, true)
