@@ -23,9 +23,13 @@
  * setting credentials for app processes and setting permissions
  * on app data directories.
  */
-#define SEAPP_CONTEXTS "/seapp_contexts"
+static char const * const seapp_contexts_file[] = {
+	"/data/system/seapp_contexts",
+	"/seapp_contexts",
+	0 };
 
 #define FILE_CONTEXTS "/file_contexts"
+
 
 struct seapp_context {
 	/* input selectors */
@@ -86,21 +90,23 @@ static int seapp_context_cmp(const void *A, const void *B)
 static struct seapp_context **seapp_contexts = NULL;
 static int nspec = 0;
 
-static void seapp_context_init(void)
+int selinux_android_seapp_context_reload(void)
 {
-	FILE *fp;
+	FILE *fp = NULL;
 	char line_buf[BUFSIZ];
-	const char *path = SEAPP_CONTEXTS;
 	char *token;
 	unsigned lineno;
 	struct seapp_context *cur;
 	char *p, *name = NULL, *value = NULL, *saveptr;
 	size_t len;
+	int i = 0, ret;
 
-	fp = fopen(path, "r");
+	while ((fp==NULL) && seapp_contexts_file[i])
+		fp = fopen(seapp_contexts_file[i++], "r");
+
 	if (!fp) {
-		selinux_log(SELINUX_ERROR, "%s:  could not open %s", __FUNCTION__, path);
-		return;
+		selinux_log(SELINUX_ERROR, "%s:  could not open any seapp_contexts file", __FUNCTION__);
+		return -1;
 	}
 
 	nspec = 0;
@@ -219,18 +225,28 @@ static void seapp_context_init(void)
 	}
 #endif
 
+	ret = 0;
+
 out:
 	fclose(fp);
-	return;
+	return ret;
 
 err:
 	selinux_log(SELINUX_ERROR, "%s:  Error reading %s, line %u, name %s, value %s\n",
-		    __FUNCTION__, path, lineno, name, value);
+		    __FUNCTION__, seapp_contexts_file[i - 1], lineno, name, value);
+	ret = -1;
 	goto out;
 oom:
 	selinux_log(SELINUX_ERROR, 
 		    "%s:  Out of memory\n", __FUNCTION__);
+	ret = -1;
 	goto out;
+}
+
+
+static void seapp_context_init(void)
+{
+        selinux_android_seapp_context_reload();
 }
 
 static pthread_once_t once = PTHREAD_ONCE_INIT;
