@@ -17,6 +17,8 @@ extern int selinux_android_setfilecon(const char *pkgdir,
 				      const char *name,
 				      uid_t uid);
 
+extern int selinux_android_restorecon(const char *file);
+
 #ifdef __cplusplus
 }
 #endif

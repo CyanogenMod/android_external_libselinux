@@ -13,6 +13,7 @@
 #include <selinux/selinux.h>
 #include <selinux/context.h>
 #include <selinux/android.h>
+#include <selinux/label.h>
 #include "callbacks.h"
 #include "selinux_internal.h"
 
@@ -23,6 +24,8 @@
  * on app data directories.
  */
 #define SEAPP_CONTEXTS "/seapp_contexts"
+
+#define FILE_CONTEXTS "/file_contexts"
 
 struct seapp_context {
 	/* input selectors */
@@ -463,3 +466,65 @@ oom:
 	goto out;
 }
 
+static struct selabel_handle *sehandle = NULL;
+
+static void file_context_init(void)
+{
+
+	struct selinux_opt seopts[] = {
+		{ SELABEL_OPT_PATH, FILE_CONTEXTS }
+	};
+
+	sehandle = selabel_open(SELABEL_CTX_FILE, seopts, 1);
+	if (!sehandle)
+		selinux_log(SELINUX_ERROR,"%s: Error getting sehandle label (%s)\n",
+			    __FUNCTION__, strerror(errno));
+}
+
+static pthread_once_t fc_once = PTHREAD_ONCE_INIT;
+
+int selinux_android_restorecon(const char *pathname)
+{
+
+	__selinux_once(fc_once, file_context_init);
+
+	int ret;
+
+	if (!sehandle)
+		goto bail;
+
+	struct stat sb;
+
+	if (lstat(pathname, &sb) < 0)
+		goto err;
+
+	char *oldcontext, *newcontext;
+
+	if (lgetfilecon(pathname, &oldcontext) < 0)
+		goto err;
+
+	if (selabel_lookup(sehandle, &newcontext, pathname, sb.st_mode) < 0)
+		goto err;
+
+	if (strcmp(newcontext, "<<none>>") && strcmp(oldcontext, newcontext))
+		if (lsetfilecon(pathname, newcontext) < 0)
+			goto err;
+
+	ret = 0;
+out:
+	if (oldcontext)
+		freecon(oldcontext);
+	if (newcontext)
+		freecon(newcontext);
+
+	return ret;
+
+err:
+	selinux_log(SELINUX_ERROR,
+		    "%s:  Error restoring context for %s (%s)\n",
+		    __FUNCTION__, pathname, strerror(errno));
+
+bail:
+	ret = -1;
+	goto out;
+}
