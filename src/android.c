@@ -28,8 +28,10 @@ static char const * const seapp_contexts_file[] = {
 	"/seapp_contexts",
 	0 };
 
-#define FILE_CONTEXTS "/file_contexts"
-
+static const struct selinux_opt seopts[] = {
+	{ SELABEL_OPT_PATH, "/data/system/file_contexts" },
+	{ SELABEL_OPT_PATH, "/file_contexts" },
+	{ 0, NULL } };
 
 struct seapp_context {
 	/* input selectors */
@@ -486,12 +488,14 @@ static struct selabel_handle *sehandle = NULL;
 
 static void file_context_init(void)
 {
+	int i = 0;
 
-	struct selinux_opt seopts[] = {
-		{ SELABEL_OPT_PATH, FILE_CONTEXTS }
-	};
+	sehandle = NULL;
+	while ((sehandle == NULL) && seopts[i].value) {
+		sehandle = selabel_open(SELABEL_CTX_FILE, &seopts[i], 1);
+		i++;
+	}
 
-	sehandle = selabel_open(SELABEL_CTX_FILE, seopts, 1);
 	if (!sehandle)
 		selinux_log(SELINUX_ERROR,"%s: Error getting sehandle label (%s)\n",
 			    __FUNCTION__, strerror(errno));
