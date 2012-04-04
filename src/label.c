@@ -21,6 +21,10 @@ typedef int (*selabel_initfunc)(struct selabel_handle *rec,
 
 static selabel_initfunc initfuncs[] = {
 	&selabel_file_init,
+	NULL,
+	NULL,
+	NULL,
+	&selabel_property_init,
 };
 
 /*
@@ -66,6 +70,9 @@ struct selabel_handle *selabel_open(unsigned int backend,
 		errno = EINVAL;
 		goto out;
 	}
+
+	if (initfuncs[backend] == NULL)
+		goto out;
 
 	rec = (struct selabel_handle *)malloc(sizeof(*rec));
 	if (!rec)
