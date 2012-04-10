@@ -13,6 +13,7 @@
 #include <selinux/selinux.h>
 #include <selinux/context.h>
 #include <selinux/android.h>
+#include <selinux/label.h>
 #include "callbacks.h"
 #include "selinux_internal.h"
 
@@ -22,7 +23,15 @@
  * setting credentials for app processes and setting permissions
  * on app data directories.
  */
-#define SEAPP_CONTEXTS "/seapp_contexts"
+static char const * const seapp_contexts_file[] = {
+	"/data/system/seapp_contexts",
+	"/seapp_contexts",
+	0 };
+
+static const struct selinux_opt seopts[] = {
+	{ SELABEL_OPT_PATH, "/data/system/file_contexts" },
+	{ SELABEL_OPT_PATH, "/file_contexts" },
+	{ 0, NULL } };
 
 struct seapp_context {
 	/* input selectors */
@@ -83,21 +92,23 @@ static int seapp_context_cmp(const void *A, const void *B)
 static struct seapp_context **seapp_contexts = NULL;
 static int nspec = 0;
 
-static void seapp_context_init(void)
+int selinux_android_seapp_context_reload(void)
 {
-	FILE *fp;
+	FILE *fp = NULL;
 	char line_buf[BUFSIZ];
-	const char *path = SEAPP_CONTEXTS;
 	char *token;
 	unsigned lineno;
 	struct seapp_context *cur;
 	char *p, *name = NULL, *value = NULL, *saveptr;
 	size_t len;
+	int i = 0, ret;
 
-	fp = fopen(path, "r");
+	while ((fp==NULL) && seapp_contexts_file[i])
+		fp = fopen(seapp_contexts_file[i++], "r");
+
 	if (!fp) {
-		selinux_log(SELINUX_ERROR, "%s:  could not open %s", __FUNCTION__, path);
-		return;
+		selinux_log(SELINUX_ERROR, "%s:  could not open any seapp_contexts file", __FUNCTION__);
+		return -1;
 	}
 
 	nspec = 0;
@@ -216,18 +227,28 @@ static void seapp_context_init(void)
 	}
 #endif
 
+	ret = 0;
+
 out:
 	fclose(fp);
-	return;
+	return ret;
 
 err:
 	selinux_log(SELINUX_ERROR, "%s:  Error reading %s, line %u, name %s, value %s\n",
-		    __FUNCTION__, path, lineno, name, value);
+		    __FUNCTION__, seapp_contexts_file[i - 1], lineno, name, value);
+	ret = -1;
 	goto out;
 oom:
 	selinux_log(SELINUX_ERROR, 
 		    "%s:  Out of memory\n", __FUNCTION__);
+	ret = -1;
 	goto out;
+}
+
+
+static void seapp_context_init(void)
+{
+        selinux_android_seapp_context_reload();
 }
 
 static pthread_once_t once = PTHREAD_ONCE_INIT;
@@ -463,3 +484,67 @@ oom:
 	goto out;
 }
 
+static struct selabel_handle *sehandle = NULL;
+
+static void file_context_init(void)
+{
+	int i = 0;
+
+	sehandle = NULL;
+	while ((sehandle == NULL) && seopts[i].value) {
+		sehandle = selabel_open(SELABEL_CTX_FILE, &seopts[i], 1);
+		i++;
+	}
+
+	if (!sehandle)
+		selinux_log(SELINUX_ERROR,"%s: Error getting sehandle label (%s)\n",
+			    __FUNCTION__, strerror(errno));
+}
+
+static pthread_once_t fc_once = PTHREAD_ONCE_INIT;
+
+int selinux_android_restorecon(const char *pathname)
+{
+
+	__selinux_once(fc_once, file_context_init);
+
+	int ret;
+
+	if (!sehandle)
+		goto bail;
+
+	struct stat sb;
+
+	if (lstat(pathname, &sb) < 0)
+		goto err;
+
+	char *oldcontext, *newcontext;
+
+	if (lgetfilecon(pathname, &oldcontext) < 0)
+		goto err;
+
+	if (selabel_lookup(sehandle, &newcontext, pathname, sb.st_mode) < 0)
+		goto err;
+
+	if (strcmp(newcontext, "<<none>>") && strcmp(oldcontext, newcontext))
+		if (lsetfilecon(pathname, newcontext) < 0)
+			goto err;
+
+	ret = 0;
+out:
+	if (oldcontext)
+		freecon(oldcontext);
+	if (newcontext)
+		freecon(newcontext);
+
+	return ret;
+
+err:
+	selinux_log(SELINUX_ERROR,
+		    "%s:  Error restoring context for %s (%s)\n",
+		    __FUNCTION__, pathname, strerror(errno));
+
+bail:
+	ret = -1;
+	goto out;
+}

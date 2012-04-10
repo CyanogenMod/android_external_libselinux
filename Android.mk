@@ -34,7 +34,8 @@ common_HOST_FILES := \
 	src/freecon.c \
 	src/init.c \
 	src/label.c \
-	src/label_file.c
+	src/label_file.c \
+	src/label_android_property.c
 
 
 common_COPY_HEADERS_TO := selinux
