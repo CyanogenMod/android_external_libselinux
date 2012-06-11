@@ -17,7 +17,8 @@
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 typedef int (*selabel_initfunc)(struct selabel_handle *rec,
-				struct selinux_opt *opts, unsigned nopts);
+				const struct selinux_opt *opts,
+				unsigned nopts);
 
 static selabel_initfunc initfuncs[] = {
 	&selabel_file_init,
@@ -31,7 +32,8 @@ static selabel_initfunc initfuncs[] = {
  * Validation functions
  */
 
-static inline int selabel_is_validate_set(struct selinux_opt *opts, unsigned n)
+static inline int selabel_is_validate_set(const struct selinux_opt *opts,
+					  unsigned n)
 {
 	while (n--)
 		if (opts[n].type == SELABEL_OPT_VALIDATE)
@@ -62,7 +64,8 @@ out:
  */
 
 struct selabel_handle *selabel_open(unsigned int backend,
-				    struct selinux_opt *opts, unsigned nopts)
+				    const struct selinux_opt *opts,
+				    unsigned nopts)
 {
 	struct selabel_handle *rec = NULL;
 
