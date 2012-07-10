@@ -1,5 +1,7 @@
 LOCAL_PATH:= $(call my-dir)
 
+MLS_CATS=1024
+
 common_SRC_FILES := \
 	src/booleans.c \
 	src/canonicalize_context.c \
@@ -45,6 +47,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(common_SRC_FILES) $(common_HOST_FILES) src/android.c
 LOCAL_MODULE:= libselinux
 LOCAL_MODULE_TAGS := eng
+LOCAL_CFLAGS += -DMLS_CATS=$(MLS_CATS)
 include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -68,4 +71,5 @@ LOCAL_MODULE_TAGS := eng
 LOCAL_COPY_HEADERS_TO := $(common_COPY_HEADERS_TO)
 LOCAL_COPY_HEADERS := $(common_COPY_HEADERS)
 LOCAL_PRELINK_MODULE := false
+LOCAL_CFLAGS += -DMLS_CATS=$(MLS_CATS)
 include $(BUILD_SHARED_LIBRARY)

@@ -254,14 +254,16 @@ static void seapp_context_init(void)
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 
 int selinux_android_setfilecon(const char *pkgdir,
-			       const char *name,
+			       const char *pkgname,
 			       uid_t uid)
 {
-	char *orig_ctx_str = NULL, *ctx_str;
+	const char *username;
+	char *orig_ctx_str = NULL, *ctx_str, *end = NULL;
 	context_t ctx = NULL;
 	struct passwd *pw;
 	struct seapp_context *cur;
 	int i, rc;
+	unsigned long id = 0;
 
 	if (is_selinux_enabled() <= 0)
 		return 0;
@@ -280,6 +282,27 @@ int selinux_android_setfilecon(const char *pkgdir,
 	pw = getpwuid(uid);
 	if (!pw)
 		goto err;
+	username = pw->pw_name;
+
+	if (!strncmp(username, "app_", 4)) {
+		id = strtoul(username + 4, NULL, 10);
+		if (id >= MLS_CATS)
+			goto err;
+	} else if (username[0] == 'u' && isdigit(username[1])) {
+		unsigned long unused;
+		unused = strtoul(username+1, &end, 10);
+		if (end[0] != '_')
+			goto err;
+		id = strtoul(end + 2, NULL, 10);
+		if (!id || id >= MLS_CATS/2)
+			goto err;
+		if (end[1] == 'i')
+			id += MLS_CATS/2;
+		else if (end[1] != 'a')
+			goto err;
+		/* use app_ for matching on the user= field */
+		username = "app_";
+	}
 
 	for (i = 0; i < nspec; i++) {
 		cur = seapp_contexts[i];
@@ -290,10 +313,10 @@ int selinux_android_setfilecon(const char *pkgdir,
 
 		if (cur->user) {
 			if (cur->prefix) {
-				if (strncasecmp(pw->pw_name, cur->user, cur->len-1))
+				if (strncasecmp(username, cur->user, cur->len-1))
 					continue;
 			} else {
-				if (strcasecmp(pw->pw_name, cur->user))
+				if (strcasecmp(username, cur->user))
 					continue;
 			}
 		}
@@ -301,7 +324,7 @@ int selinux_android_setfilecon(const char *pkgdir,
 		/* seinfo= is ignored / not available for file labeling. */
 
 		if (cur->name) {
-			if (!name || strcasecmp(name, cur->name))
+			if (!pkgname || strcasecmp(pkgname, cur->name))
 				continue;
 		}
 
@@ -311,12 +334,8 @@ int selinux_android_setfilecon(const char *pkgdir,
 		if (context_type_set(ctx, cur->type))
 			goto oom;
 
-		if (cur->levelFromUid && !strncmp(pw->pw_name, "app_", 4)) {
+		if (cur->levelFromUid && id) {
 			char level[255];
-			unsigned long id;
-
-			/* Only supported for app UIDs. */
-			id = strtoul(pw->pw_name + 4, NULL, 10);
 			snprintf(level, sizeof level, "%s:c%lu",
 				 context_range_get(ctx), id);
 			if (context_range_set(ctx, level))
@@ -362,11 +381,12 @@ oom:
 int selinux_android_setcontext(uid_t uid,
 			       int isSystemServer,
 			       const char *seinfo,
-			       const char *name)
+			       const char *pkgname)
 {
-	char *orig_ctx_str = NULL, *ctx_str;
+	const char *username;
+	char *orig_ctx_str = NULL, *ctx_str, *end = NULL;
 	context_t ctx = NULL;
-	unsigned long id;
+	unsigned long id = 0;
 	struct passwd *pw;
 	struct seapp_context *cur;
 	int i, rc;
@@ -388,6 +408,27 @@ int selinux_android_setcontext(uid_t uid,
 	pw = getpwuid(uid);
 	if (!pw)
 		goto err;
+	username = pw->pw_name;
+
+	if (!strncmp(username, "app_", 4)) {
+		id = strtoul(username + 4, NULL, 10);
+		if (id >= MLS_CATS)
+			goto err;
+	} else if (username[0] == 'u' && isdigit(username[1])) {
+		unsigned long unused;
+		unused = strtoul(username+1, &end, 10);
+		if (end[0] != '_')
+			goto err;
+		id = strtoul(end + 2, NULL, 10);
+		if (!id || id >= MLS_CATS/2)
+			goto err;
+		if (end[1] == 'i')
+			id += MLS_CATS/2;
+		else if (end[1] != 'a')
+			goto err;
+		/* use app_ for matching on the user= field */
+		username = "app_";
+	}
 
 	for (i = 0; i < nspec; i++) {
 		cur = seapp_contexts[i];
@@ -395,10 +436,10 @@ int selinux_android_setcontext(uid_t uid,
 			continue;
 		if (cur->user) {
 			if (cur->prefix) {
-				if (strncasecmp(pw->pw_name, cur->user, cur->len-1))
+				if (strncasecmp(username, cur->user, cur->len-1))
 					continue;
 			} else {
-				if (strcasecmp(pw->pw_name, cur->user))
+				if (strcasecmp(username, cur->user))
 					continue;
 			}
 		}
@@ -407,7 +448,7 @@ int selinux_android_setcontext(uid_t uid,
 				continue;
 		}
 		if (cur->name) {
-			if (!name || strcasecmp(name, cur->name))
+			if (!pkgname || strcasecmp(pkgname, cur->name))
 				continue;
 		}
 
@@ -417,12 +458,8 @@ int selinux_android_setcontext(uid_t uid,
 		if (context_type_set(ctx, cur->domain))
 			goto oom;
 
-		if (cur->levelFromUid && !strncmp(pw->pw_name, "app_", 4)) {
+		if (cur->levelFromUid && id) {
 			char level[255];
-			unsigned long id;
-
-			/* Only supported for app UIDs. */
-			id = strtoul(pw->pw_name + 4, NULL, 10);
 			snprintf(level, sizeof level, "%s:c%lu",
 				 context_range_get(ctx), id);
 			if (context_range_set(ctx, level))
@@ -442,7 +479,7 @@ int selinux_android_setcontext(uid_t uid,
 		 */
 		selinux_log(SELINUX_ERROR,
 			    "%s:  No match for app with uid %d, seinfo %s, name %s\n",
-			    __FUNCTION__, uid, seinfo, name);
+			    __FUNCTION__, uid, seinfo, pkgname);
 		rc = -1;
 		goto out;
 	}
