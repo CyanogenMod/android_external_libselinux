@@ -294,7 +294,7 @@ int selinux_android_setfilecon(const char *pkgdir,
 		if (end[0] != '_')
 			goto err;
 		id = strtoul(end + 2, NULL, 10);
-		if (!id || id >= MLS_CATS/2)
+		if (id >= MLS_CATS/2)
 			goto err;
 		if (end[1] == 'i')
 			id += MLS_CATS/2;
@@ -334,7 +334,7 @@ int selinux_android_setfilecon(const char *pkgdir,
 		if (context_type_set(ctx, cur->type))
 			goto oom;
 
-		if (cur->levelFromUid && id) {
+		if (cur->levelFromUid) {
 			char level[255];
 			snprintf(level, sizeof level, "%s:c%lu",
 				 context_range_get(ctx), id);
@@ -420,7 +420,7 @@ int selinux_android_setcontext(uid_t uid,
 		if (end[0] != '_')
 			goto err;
 		id = strtoul(end + 2, NULL, 10);
-		if (!id || id >= MLS_CATS/2)
+		if (id >= MLS_CATS/2)
 			goto err;
 		if (end[1] == 'i')
 			id += MLS_CATS/2;
@@ -458,7 +458,7 @@ int selinux_android_setcontext(uid_t uid,
 		if (context_type_set(ctx, cur->domain))
 			goto oom;
 
-		if (cur->levelFromUid && id) {
+		if (cur->levelFromUid) {
 			char level[255];
 			snprintf(level, sizeof level, "%s:c%lu",
 				 context_range_get(ctx), id);
