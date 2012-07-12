@@ -253,9 +253,10 @@ static void seapp_context_init(void)
 
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 
-int selinux_android_setfilecon(const char *pkgdir,
-			       const char *pkgname,
-			       uid_t uid)
+int selinux_android_setfilecon2(const char *pkgdir,
+				const char *pkgname,
+				const char *seinfo,
+				uid_t uid)
 {
 	const char *username;
 	char *orig_ctx_str = NULL, *ctx_str, *end = NULL;
@@ -321,7 +322,10 @@ int selinux_android_setfilecon(const char *pkgdir,
 			}
 		}
 
-		/* seinfo= is ignored / not available for file labeling. */
+		if (cur->seinfo) {
+			if (!seinfo || strcasecmp(seinfo, cur->seinfo))
+				continue;
+		}
 
 		if (cur->name) {
 			if (!pkgname || strcasecmp(pkgname, cur->name))
@@ -376,6 +380,13 @@ oom:
 	selinux_log(SELINUX_ERROR, "%s:  Out of memory\n", __FUNCTION__);
 	rc = -1;
 	goto out;
+}
+
+int selinux_android_setfilecon(const char *pkgdir,
+			       const char *pkgname,
+			       uid_t uid)
+{
+	return selinux_android_setfilecon2(pkgdir, pkgname, NULL, uid);
 }
 
 int selinux_android_setcontext(uid_t uid,

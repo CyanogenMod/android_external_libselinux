@@ -14,8 +14,13 @@ extern int selinux_android_setcontext(uid_t uid,
 				      const char *name);
 
 extern int selinux_android_setfilecon(const char *pkgdir,
-				      const char *name,
+				      const char *pkgname,
 				      uid_t uid);
+
+extern int selinux_android_setfilecon2(const char *pkgdir,
+				       const char *pkgname,
+				       const char *seinfo,
+				       uid_t uid);
 
 extern int selinux_android_restorecon(const char *file);
 
