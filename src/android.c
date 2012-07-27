@@ -491,7 +491,8 @@ int selinux_android_setcontext(uid_t uid,
 		selinux_log(SELINUX_ERROR,
 			    "%s:  No match for app with uid %d, seinfo %s, name %s\n",
 			    __FUNCTION__, uid, seinfo, pkgname);
-		goto err;
+		rc = -1;
+		goto out;
 	}
 
 	ctx_str = context_str(ctx);
@@ -523,7 +524,7 @@ err:
 			    "%s:  Error setting context for app with uid %d, seinfo %s: %s\n",
 			    __FUNCTION__, uid, seinfo, strerror(errno));
 
-	rc = (security_getenforce() == 0) ? 0 : -1;
+	rc = -1;
 	goto out;
 oom:
 	selinux_log(SELINUX_ERROR, "%s:  Out of memory\n", __FUNCTION__);
