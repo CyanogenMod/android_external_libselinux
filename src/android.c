@@ -45,6 +45,7 @@ struct seapp_context {
 	char *domain;
 	char *type;
 	char *level;
+	char *sebool;
 	char levelFromUid;
 };
 
@@ -84,6 +85,12 @@ static int seapp_context_cmp(const void *A, const void *B)
 		return -1;
 	if (!s1->name && s2->name)
 		return 1;
+
+        /* Give precedence to a specified sebool= over an unspecified sebool=. */
+        if (s1->sebool && !s2->sebool)
+                return -1;
+        if (!s1->sebool && s2->sebool)
+                return 1;
 
 	/* Anything else has equal precedence. */
 	return 0;
@@ -196,6 +203,10 @@ int selinux_android_seapp_context_reload(void)
 				cur->level = strdup(value);
 				if (!cur->level)
 					goto oom;
+			} else if (!strcasecmp(name, "sebool")) {
+				cur->sebool = strdup(value);
+				if (!cur->sebool)
+					goto oom;
 			} else
 				goto err;
 
@@ -217,12 +228,12 @@ int selinux_android_seapp_context_reload(void)
 		int i;
 		for (i = 0; i < nspec; i++) {
 			cur = seapp_contexts[i];
-			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s user=%s seinfo=%s name=%s -> domain=%s type=%s level=%s levelFromUid=%s",
-				    __FUNCTION__,
-				    cur->isSystemServer ? "true" : "false",
-				    cur->user, cur->seinfo, cur->name,
-				    cur->domain, cur->type, cur->level,
-				    cur->levelFromUid ? "true" : "false");
+			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s user=%s seinfo=%s name=%s sebool=%s -> domain=%s type=%s level=%s levelFromUid=%s",
+			__FUNCTION__,
+			cur->isSystemServer ? "true" : "false", cur->user,
+			cur->seinfo, cur->name, cur->sebool, cur->domain,
+			cur->type, cur->level,
+			cur->levelFromUid ? "true" : "false");
 		}
 	}
 #endif
@@ -335,6 +346,17 @@ int selinux_android_setfilecon2(const char *pkgdir,
 		if (!cur->type)
 			continue;
 
+		if (cur->sebool) {
+			int value = security_get_boolean_active(cur->sebool);
+			if (value == 0)
+				continue;
+			else if (value == -1) {
+				selinux_log(SELINUX_ERROR, \
+				"Could not find boolean: %s ", cur->sebool);
+				goto err;
+			}
+		}
+
 		if (context_type_set(ctx, cur->type))
 			goto oom;
 
@@ -348,7 +370,7 @@ int selinux_android_setfilecon2(const char *pkgdir,
 			if (context_range_set(ctx, cur->level))
 				goto oom;
 		}
-		
+
 		break;
 	}
 
@@ -443,6 +465,7 @@ int selinux_android_setcontext(uid_t uid,
 
 	for (i = 0; i < nspec; i++) {
 		cur = seapp_contexts[i];
+
 		if (cur->isSystemServer != isSystemServer)
 			continue;
 		if (cur->user) {
@@ -465,6 +488,17 @@ int selinux_android_setcontext(uid_t uid,
 
 		if (!cur->domain)
 			continue;
+
+		if (cur->sebool) {
+			int value = security_get_boolean_active(cur->sebool);
+			if (value == 0)
+				continue;
+			else if (value == -1) {
+				selinux_log(SELINUX_ERROR, \
+				"Could not find boolean: %s ", cur->sebool);
+                                goto err;
+                        }
+                }
 
 		if (context_type_set(ctx, cur->domain))
 			goto oom;
