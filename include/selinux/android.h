@@ -4,6 +4,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <selinux/label.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
