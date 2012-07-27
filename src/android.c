@@ -525,7 +525,8 @@ int selinux_android_setcontext(uid_t uid,
 		selinux_log(SELINUX_ERROR,
 			    "%s:  No match for app with uid %d, seinfo %s, name %s\n",
 			    __FUNCTION__, uid, seinfo, pkgname);
-		rc = -1;
+
+		rc = (security_getenforce() == 0) ? 0 : -1;
 		goto out;
 	}
 
