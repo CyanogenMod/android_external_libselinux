@@ -8,6 +8,8 @@
 extern "C" {
 #endif
 
+extern struct selabel_handle* selinux_android_file_context_handle(void);
+
 extern int selinux_android_setcontext(uid_t uid,
 				      int isSystemServer,
 				      const char *seinfo,
