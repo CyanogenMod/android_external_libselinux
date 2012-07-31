@@ -14,6 +14,7 @@
 #include <selinux/context.h>
 #include <selinux/android.h>
 #include <selinux/label.h>
+#include <selinux/avc.h>
 #include "callbacks.h"
 #include "selinux_internal.h"
 
@@ -548,6 +549,7 @@ int selinux_android_setcontext(uid_t uid,
 out:
 	freecon(orig_ctx_str);
 	context_free(ctx);
+	avc_netlink_close();
 	return rc;
 err:
 	if (isSystemServer)
