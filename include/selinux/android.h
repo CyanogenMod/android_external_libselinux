@@ -12,6 +12,10 @@ extern "C" {
 
 extern struct selabel_handle* selinux_android_file_context_handle(void);
 
+extern int selinux_android_load_policy(void);
+
+extern int selinux_android_reload_policy(void);
+
 extern int selinux_android_setcontext(uid_t uid,
 				      int isSystemServer,
 				      const char *seinfo,

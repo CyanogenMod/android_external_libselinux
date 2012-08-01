@@ -7,6 +7,8 @@
 #include <errno.h>
 #include <pwd.h>
 #include <grp.h>
+#include <sys/mman.h>
+#include <sys/mount.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -33,6 +35,11 @@ static const struct selinux_opt seopts[] = {
 	{ SELABEL_OPT_PATH, "/data/system/file_contexts" },
 	{ SELABEL_OPT_PATH, "/file_contexts" },
 	{ 0, NULL } };
+
+static const char *const sepolicy_prefix[] = {
+        "/data/system/sepolicy",
+        "/sepolicy",
+        0 };
 
 struct seapp_context {
 	/* input selectors */
@@ -582,7 +589,7 @@ static void file_context_init(void)
 	}
 
 	if (!sehandle)
-		selinux_log(SELINUX_ERROR,"%s: Error getting sehandle label (%s)\n",
+		selinux_log(SELINUX_ERROR, "%s: Error getting sehandle label (%s)\n",
 			    __FUNCTION__, strerror(errno));
 }
 
@@ -635,9 +642,89 @@ bail:
 }
 
 
-struct selabel_handle* selinux_android_file_context_handle(void) {
+struct selabel_handle* selinux_android_file_context_handle(void)
+{
+	__selinux_once(fc_once, file_context_init);
 
-        __selinux_once(fc_once, file_context_init);
+	return sehandle;
+}
 
-        return sehandle;
+int selinux_android_reload_policy(void)
+{
+	char path[PATH_MAX];
+	int fd = -1, rc, vers;
+	struct stat sb;
+	void *map = NULL;
+	int i = 0;
+
+	vers = security_policyvers();
+	if (vers <= 0) {
+		selinux_log(SELINUX_ERROR, "SELinux:  Unable to read policy version\n");
+		return -1;
+	}
+	selinux_log(SELINUX_INFO, "SELinux:  Maximum supported policy version:  %d\n", vers);
+
+	while (fd < 0 && sepolicy_prefix[i]) {
+		snprintf(path, sizeof(path), "%s.%d",
+			sepolicy_prefix[i], vers);
+		fd = open(path, O_RDONLY);
+
+		int max_vers = vers;
+		while (fd < 0 && errno == ENOENT && --max_vers) {
+			snprintf(path, sizeof(path), "%s.%d",
+				sepolicy_prefix[i], max_vers);
+			fd = open(path, O_RDONLY);
+		}
+		i++;
+	}
+	if (fd < 0) {
+		selinux_log(SELINUX_ERROR, "SELinux:  Could not open sepolicy:  %s\n",
+				strerror(errno));
+		return -1;
+	}
+	if (fstat(fd, &sb) < 0) {
+		selinux_log(SELINUX_ERROR, "SELinux:  Could not stat %s:  %s\n",
+				path, strerror(errno));
+		close(fd);
+		return -1;
+	}
+	map = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+	if (map == MAP_FAILED) {
+		selinux_log(SELINUX_ERROR, "SELinux:  Could not map %s:  %s\n",
+			path, strerror(errno));
+		close(fd);
+		return -1;
+	}
+
+	rc = security_load_policy(map, sb.st_size);
+	if (rc < 0) {
+		selinux_log(SELINUX_ERROR, "SELinux:  Could not load policy:  %s\n",
+			strerror(errno));
+		munmap(map, sb.st_size);
+		close(fd);
+		return -1;
+	}
+
+	munmap(map, sb.st_size);
+	close(fd);
+	selinux_log(SELINUX_INFO, "SELinux: Loaded policy from %s\n", path);
+
+	return 0;
+}
+
+int selinux_android_load_policy(void)
+{
+	mkdir(SELINUXMNT, 0755);
+	if (mount("selinuxfs", SELINUXMNT, "selinuxfs", 0, NULL)) {
+		if (errno == ENODEV) {
+			/* SELinux not enabled in kernel */
+			return -1;
+		}
+		selinux_log(SELINUX_ERROR,"SELinux:  Could not mount selinuxfs:  %s\n",
+				strerror(errno));
+		return -1;
+	}
+	set_selinuxmnt(SELINUXMNT);
+
+	return selinux_android_reload_policy();
 }
