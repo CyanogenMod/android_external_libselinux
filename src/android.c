@@ -644,7 +644,7 @@ bail:
 
 struct selabel_handle* selinux_android_file_context_handle(void)
 {
-	__selinux_once(fc_once, file_context_init);
+        file_context_init();
 
 	return sehandle;
 }
