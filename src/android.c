@@ -592,19 +592,26 @@ oom:
 
 static struct selabel_handle *sehandle = NULL;
 
-static void file_context_init(void)
+static struct selabel_handle *file_context_open(void)
 {
+	struct selabel_handle *h;
 	int i = 0;
 
-	sehandle = NULL;
-	while ((sehandle == NULL) && seopts[i].value) {
-		sehandle = selabel_open(SELABEL_CTX_FILE, &seopts[i], 1);
+	h = NULL;
+	while ((h == NULL) && seopts[i].value) {
+		h = selabel_open(SELABEL_CTX_FILE, &seopts[i], 1);
 		i++;
 	}
 
-	if (!sehandle)
+	if (!h)
 		selinux_log(SELINUX_ERROR, "%s: Error getting sehandle label (%s)\n",
 			    __FUNCTION__, strerror(errno));
+	return h;
+}
+
+static void file_context_init(void)
+{
+	sehandle = file_context_open();
 }
 
 static pthread_once_t fc_once = PTHREAD_ONCE_INIT;
@@ -658,9 +665,7 @@ bail:
 
 struct selabel_handle* selinux_android_file_context_handle(void)
 {
-        file_context_init();
-
-	return sehandle;
+        return file_context_open();
 }
 
 int selinux_android_reload_policy(void)
