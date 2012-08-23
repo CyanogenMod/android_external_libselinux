@@ -311,17 +311,24 @@ int selinux_android_setfilecon2(const char *pkgdir,
 	} else if (username[0] == 'u' && isdigit(username[1])) {
 		unsigned long unused;
 		unused = strtoul(username+1, &end, 10);
-		if (end[0] != '_')
+		if (end[0] != '_' || end[1] == 0)
 			goto err;
-		id = strtoul(end + 2, NULL, 10);
-		if (id >= MLS_CATS/2)
-			goto err;
-		if (end[1] == 'i')
+		if (end[1] == 'a' && isdigit(end[2])) {
+			id = strtoul(end + 2, NULL, 10);
+			if (id >= MLS_CATS/2)
+				goto err;
+			/* regular app UID */
+			username = "app_";
+		} else if (end[1] == 'i' && isdigit(end[2])) {
+			id = strtoul(end + 2, NULL, 10);
+			if (id >= MLS_CATS/2)
+				goto err;
+			/* isolated service */
 			id += MLS_CATS/2;
-		else if (end[1] != 'a')
-			goto err;
-		/* use app_ for matching on the user= field */
-		username = "app_";
+			username = "app_";
+		} else {
+			username = end + 1;
+		}
 	}
 
 	for (i = 0; i < nspec; i++) {
@@ -458,17 +465,24 @@ int selinux_android_setcontext(uid_t uid,
 	} else if (username[0] == 'u' && isdigit(username[1])) {
 		unsigned long unused;
 		unused = strtoul(username+1, &end, 10);
-		if (end[0] != '_')
+		if (end[0] != '_' || end[1] == 0)
 			goto err;
-		id = strtoul(end + 2, NULL, 10);
-		if (id >= MLS_CATS/2)
-			goto err;
-		if (end[1] == 'i')
+		if (end[1] == 'a' && isdigit(end[2])) {
+			id = strtoul(end + 2, NULL, 10);
+			if (id >= MLS_CATS/2)
+				goto err;
+			/* regular app UID */
+			username = "app_";
+		} else if (end[1] == 'i' && isdigit(end[2])) {
+			id = strtoul(end + 2, NULL, 10);
+			if (id >= MLS_CATS/2)
+				goto err;
+			/* isolated service */
 			id += MLS_CATS/2;
-		else if (end[1] != 'a')
-			goto err;
-		/* use app_ for matching on the user= field */
-		username = "app_";
+			username = "app_";
+		} else {
+			username = end + 1;
+		}
 	}
 
 	for (i = 0; i < nspec; i++) {
