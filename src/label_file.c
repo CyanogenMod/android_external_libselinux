@@ -541,7 +541,8 @@ static void closef(struct selabel_handle *rec)
 		free(spec->type_str);
 		free(spec->lr.ctx_raw);
 		free(spec->lr.ctx_trans);
-		regfree(&spec->regex);
+		if (spec->regcomp)
+			regfree(&spec->regex);
 	}
 
 	for (i = 0; i < (unsigned int)data->num_stems; i++) {
