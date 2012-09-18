@@ -36,7 +36,7 @@ static const struct selinux_opt seopts[] = {
 	{ SELABEL_OPT_PATH, "/file_contexts" },
 	{ 0, NULL } };
 
-static const char *const sepolicy_prefix[] = {
+static const char *const sepolicy_file[] = {
         "/data/system/sepolicy",
         "/sepolicy",
         0 };
@@ -671,29 +671,15 @@ struct selabel_handle* selinux_android_file_context_handle(void)
 int selinux_android_reload_policy(void)
 {
 	char path[PATH_MAX];
-	int fd = -1, rc, vers;
+	int fd = -1, rc;
 	struct stat sb;
 	void *map = NULL;
 	int i = 0;
 
-	vers = security_policyvers();
-	if (vers <= 0) {
-		selinux_log(SELINUX_ERROR, "SELinux:  Unable to read policy version\n");
-		return -1;
-	}
-	selinux_log(SELINUX_INFO, "SELinux:  Maximum supported policy version:  %d\n", vers);
-
-	while (fd < 0 && sepolicy_prefix[i]) {
-		snprintf(path, sizeof(path), "%s.%d",
-			sepolicy_prefix[i], vers);
+	while (fd < 0 && sepolicy_file[i]) {
+		snprintf(path, sizeof(path), "%s",
+			sepolicy_file[i]);
 		fd = open(path, O_RDONLY);
-
-		int max_vers = vers;
-		while (fd < 0 && errno == ENOENT && --max_vers) {
-			snprintf(path, sizeof(path), "%s.%d",
-				sepolicy_prefix[i], max_vers);
-			fd = open(path, O_RDONLY);
-		}
 		i++;
 	}
 	if (fd < 0) {
