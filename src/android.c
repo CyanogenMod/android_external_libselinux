@@ -17,6 +17,7 @@
 #include <selinux/android.h>
 #include <selinux/label.h>
 #include <selinux/avc.h>
+#include <private/android_filesystem_config.h>
 #include "callbacks.h"
 #include "selinux_internal.h"
 
@@ -272,70 +273,48 @@ static void seapp_context_init(void)
 
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 
-int selinux_android_setfilecon2(const char *pkgdir,
-				const char *pkgname,
+#define SEAPP_TYPE 1
+#define SEAPP_DOMAIN 2
+static int seapp_context_lookup(int kind,
+				uid_t uid,
+				int isSystemServer,
 				const char *seinfo,
-				uid_t uid)
+				const char *pkgname,
+				context_t ctx)
 {
-	const char *username;
-	char *orig_ctx_str = NULL, *ctx_str, *end = NULL;
-	context_t ctx = NULL;
+	const char *username = NULL;
+	char *end = NULL;
 	struct passwd *pw;
 	struct seapp_context *cur;
-	int i, rc;
-	unsigned long id = 0;
+	int i;
+	size_t n;
+	uid_t appid = 0;
 
-	if (is_selinux_enabled() <= 0)
-		return 0;
-
-	__selinux_once(once, seapp_context_init);
-
-	rc = getfilecon(pkgdir, &ctx_str);
-	if (rc < 0)
-		goto err;
-
-	ctx = context_new(ctx_str);
-	orig_ctx_str = ctx_str;
-	if (!ctx)
-		goto oom;
-
-	pw = getpwuid(uid);
-	if (!pw)
-		goto err;
-	username = pw->pw_name;
-
-	if (!strncmp(username, "app_", 4)) {
-		id = strtoul(username + 4, NULL, 10);
-		if (id >= MLS_CATS)
-			goto err;
-	} else if (username[0] == 'u' && isdigit(username[1])) {
-		unsigned long unused;
-		unused = strtoul(username+1, &end, 10);
-		if (end[0] != '_' || end[1] == 0)
-			goto err;
-		if (end[1] == 'a' && isdigit(end[2])) {
-			id = strtoul(end + 2, NULL, 10);
-			if (id >= MLS_CATS/2)
-				goto err;
-			/* regular app UID */
-			username = "app_";
-		} else if (end[1] == 'i' && isdigit(end[2])) {
-			id = strtoul(end + 2, NULL, 10);
-			if (id >= MLS_CATS/2)
-				goto err;
-			/* isolated service */
-			id += MLS_CATS/2;
-			username = "app_";
-		} else {
-			username = end + 1;
+	appid = uid % AID_USER;
+	if (appid < AID_APP) {
+		for (n = 0; n < android_id_count; n++) {
+			if (android_ids[n].aid == appid) {
+				username = android_ids[n].name;
+				break;
+			}
 		}
+		if (!username)
+			goto err;
+	} else if (appid < AID_ISOLATED_START) {
+		username = "app_";
+		appid -= AID_APP;
+	} else {
+		username = "isolated";
+		appid -= AID_ISOLATED_START;
 	}
+
+	if (appid >= MLS_CATS)
+		goto err;
 
 	for (i = 0; i < nspec; i++) {
 		cur = seapp_contexts[i];
 
-		/* isSystemServer=true is only for app process labeling. */
-		if (cur->isSystemServer)
+		if (cur->isSystemServer != isSystemServer)
 			continue;
 
 		if (cur->user) {
@@ -358,7 +337,9 @@ int selinux_android_setfilecon2(const char *pkgdir,
 				continue;
 		}
 
-		if (!cur->type)
+		if (kind == SEAPP_TYPE && !cur->type)
+			continue;
+		else if (kind == SEAPP_DOMAIN && !cur->domain)
 			continue;
 
 		if (cur->sebool) {
@@ -372,13 +353,18 @@ int selinux_android_setfilecon2(const char *pkgdir,
 			}
 		}
 
-		if (context_type_set(ctx, cur->type))
-			goto oom;
+		if (kind == SEAPP_TYPE) {
+			if (context_type_set(ctx, cur->type))
+				goto oom;
+		} else if (kind == SEAPP_DOMAIN) {
+			if (context_type_set(ctx, cur->domain))
+				goto oom;
+		}
 
 		if (cur->levelFromUid) {
 			char level[255];
 			snprintf(level, sizeof level, "%s:c%lu",
-				 context_range_get(ctx), id);
+				 context_range_get(ctx), appid);
 			if (context_range_set(ctx, level))
 				goto oom;
 		} else if (cur->level) {
@@ -388,6 +374,55 @@ int selinux_android_setfilecon2(const char *pkgdir,
 
 		break;
 	}
+
+	if (kind == SEAPP_DOMAIN && i == nspec) {
+		/*
+		 * No match.
+		 * Fail to prevent staying in the zygote's context.
+		 */
+		selinux_log(SELINUX_ERROR,
+			    "%s:  No match for app with uid %d, seinfo %s, name %s\n",
+			    __FUNCTION__, uid, seinfo, pkgname);
+
+		if (security_getenforce() == 1)
+			goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+oom:
+	return -2;
+}
+
+int selinux_android_setfilecon2(const char *pkgdir,
+				const char *pkgname,
+				const char *seinfo,
+				uid_t uid)
+{
+	char *orig_ctx_str = NULL, *ctx_str;
+	context_t ctx = NULL;
+	int rc;
+
+	if (is_selinux_enabled() <= 0)
+		return 0;
+
+	__selinux_once(once, seapp_context_init);
+
+	rc = getfilecon(pkgdir, &ctx_str);
+	if (rc < 0)
+		goto err;
+
+	ctx = context_new(ctx_str);
+	orig_ctx_str = ctx_str;
+	if (!ctx)
+		goto oom;
+
+	rc = seapp_context_lookup(SEAPP_TYPE, uid, 0, seinfo, pkgname, ctx);
+	if (rc == -1)
+		goto err;
+	else if (rc == -2)
+		goto oom;
 
 	ctx_str = context_str(ctx);
 	if (!ctx_str)
@@ -431,13 +466,9 @@ int selinux_android_setcontext(uid_t uid,
 			       const char *seinfo,
 			       const char *pkgname)
 {
-	const char *username;
-	char *orig_ctx_str = NULL, *ctx_str, *end = NULL;
+	char *orig_ctx_str = NULL, *ctx_str;
 	context_t ctx = NULL;
-	unsigned long id = 0;
-	struct passwd *pw;
-	struct seapp_context *cur;
-	int i, rc;
+	int rc;
 
 	if (is_selinux_enabled() <= 0)
 		return 0;
@@ -453,104 +484,11 @@ int selinux_android_setcontext(uid_t uid,
 	if (!ctx)
 		goto oom;
 
-	pw = getpwuid(uid);
-	if (!pw)
+	rc = seapp_context_lookup(SEAPP_DOMAIN, uid, isSystemServer, seinfo, pkgname, ctx);
+	if (rc == -1)
 		goto err;
-	username = pw->pw_name;
-
-	if (!strncmp(username, "app_", 4)) {
-		id = strtoul(username + 4, NULL, 10);
-		if (id >= MLS_CATS)
-			goto err;
-	} else if (username[0] == 'u' && isdigit(username[1])) {
-		unsigned long unused;
-		unused = strtoul(username+1, &end, 10);
-		if (end[0] != '_' || end[1] == 0)
-			goto err;
-		if (end[1] == 'a' && isdigit(end[2])) {
-			id = strtoul(end + 2, NULL, 10);
-			if (id >= MLS_CATS/2)
-				goto err;
-			/* regular app UID */
-			username = "app_";
-		} else if (end[1] == 'i' && isdigit(end[2])) {
-			id = strtoul(end + 2, NULL, 10);
-			if (id >= MLS_CATS/2)
-				goto err;
-			/* isolated service */
-			id += MLS_CATS/2;
-			username = "app_";
-		} else {
-			username = end + 1;
-		}
-	}
-
-	for (i = 0; i < nspec; i++) {
-		cur = seapp_contexts[i];
-
-		if (cur->isSystemServer != isSystemServer)
-			continue;
-		if (cur->user) {
-			if (cur->prefix) {
-				if (strncasecmp(username, cur->user, cur->len-1))
-					continue;
-			} else {
-				if (strcasecmp(username, cur->user))
-					continue;
-			}
-		}
-		if (cur->seinfo) {
-			if (!seinfo || strcasecmp(seinfo, cur->seinfo))
-				continue;
-		}
-		if (cur->name) {
-			if (!pkgname || strcasecmp(pkgname, cur->name))
-				continue;
-		}
-
-		if (!cur->domain)
-			continue;
-
-		if (cur->sebool) {
-			int value = security_get_boolean_active(cur->sebool);
-			if (value == 0)
-				continue;
-			else if (value == -1) {
-				selinux_log(SELINUX_ERROR, \
-				"Could not find boolean: %s ", cur->sebool);
-                                goto err;
-                        }
-                }
-
-		if (context_type_set(ctx, cur->domain))
-			goto oom;
-
-		if (cur->levelFromUid) {
-			char level[255];
-			snprintf(level, sizeof level, "%s:c%lu",
-				 context_range_get(ctx), id);
-			if (context_range_set(ctx, level))
-				goto oom;
-		} else if (cur->level) {
-			if (context_range_set(ctx, cur->level))
-				goto oom;
-		}
-
-		break;
-	}
-
-	if (i == nspec) {
-		/*
-		 * No match. 
-		 * Fail to prevent staying in the zygote's context.
-		 */
-		selinux_log(SELINUX_ERROR,
-			    "%s:  No match for app with uid %d, seinfo %s, name %s\n",
-			    __FUNCTION__, uid, seinfo, pkgname);
-
-		rc = (security_getenforce() == 0) ? 0 : -1;
-		goto out;
-	}
+	else if (rc == -2)
+		goto oom;
 
 	ctx_str = context_str(ctx);
 	if (!ctx_str)
