@@ -60,7 +60,7 @@ struct seapp_context {
 
 static int seapp_context_cmp(const void *A, const void *B)
 {
-	const struct seapp_context **sp1 = A, **sp2 = B;
+	const struct seapp_context *const *sp1 = A, *const *sp2 = B;
 	const struct seapp_context *s1 = *sp1, *s2 = *sp2;
 
 	/* Give precedence to isSystemServer=true. */
@@ -273,9 +273,18 @@ static void seapp_context_init(void)
 
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 
-#define SEAPP_TYPE 1
-#define SEAPP_DOMAIN 2
-static int seapp_context_lookup(int kind,
+/*
+ * Max appid (uid - AID_APP) that can be mapped to category set uniquely
+ * using the current scheme.
+ */
+#define CAT_MAPPING_MAX_APPID (0x1<<16)
+
+enum seapp_kind {
+	SEAPP_TYPE,
+	SEAPP_DOMAIN
+};
+
+static int seapp_context_lookup(enum seapp_kind kind,
 				uid_t uid,
 				int isSystemServer,
 				const char *seinfo,
@@ -308,7 +317,7 @@ static int seapp_context_lookup(int kind,
 		appid -= AID_ISOLATED_START;
 	}
 
-	if (appid >= MLS_CATS)
+	if (appid >= CAT_MAPPING_MAX_APPID)
 		goto err;
 
 	for (i = 0; i < nspec; i++) {
@@ -363,8 +372,9 @@ static int seapp_context_lookup(int kind,
 
 		if (cur->levelFromUid) {
 			char level[255];
-			snprintf(level, sizeof level, "%s:c%lu",
-				 context_range_get(ctx), appid);
+			snprintf(level, sizeof level, "%s:c%u,c%u",
+				 context_range_get(ctx), appid & 0xff,
+				 256 + (appid>>8 & 0xff));
 			if (context_range_set(ctx, level))
 				goto oom;
 		} else if (cur->level) {
