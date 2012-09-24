@@ -310,10 +310,10 @@ static int seapp_context_lookup(enum seapp_kind kind,
 		if (!username)
 			goto err;
 	} else if (appid < AID_ISOLATED_START) {
-		username = "app_";
+		username = "_app";
 		appid -= AID_APP;
 	} else {
-		username = "isolated";
+		username = "_isolated";
 		appid -= AID_ISOLATED_START;
 	}
 
