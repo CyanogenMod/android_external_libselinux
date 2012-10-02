@@ -375,6 +375,14 @@ static int process_line(struct selabel_handle *rec,
 	skip_type:
 		spec_arr[nspec].lr.ctx_raw = strdup(context);
 
+		if (strcmp(context, "<<none>>") && rec->validating) {
+			if (selabel_validate(rec, &spec_arr[nspec].lr) < 0) {
+				selinux_log(SELINUX_WARNING,
+					    "%s:  line %d has invalid context %s\n",
+					    path, lineno, spec_arr[nspec].lr.ctx_raw);
+			}
+		}
+
 		/* Determine if specification has 
 		 * any meta characters in the RE */
 		spec_hasMetaChars(&spec_arr[nspec]);
