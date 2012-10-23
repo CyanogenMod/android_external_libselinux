@@ -567,6 +567,9 @@ static pthread_once_t fc_once = PTHREAD_ONCE_INIT;
 int selinux_android_restorecon(const char *pathname)
 {
 
+	if (is_selinux_enabled() <= 0)
+		return 0;
+
 	__selinux_once(fc_once, file_context_init);
 
 	int ret;
