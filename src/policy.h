@@ -12,11 +12,17 @@
 /* selinuxfs magic number */
 #define SELINUX_MAGIC 0xf97cff8c
 
-/* selinuxfs mount point */
+/* Preferred selinuxfs mount point directory paths. */
+#define SELINUXMNT "/sys/fs/selinux"
+#define OLDSELINUXMNT "/selinux"
+
+/* selinuxfs filesystem type string. */
+#define SELINUXFS "selinuxfs"
+
+/* selinuxfs mount point determined at runtime */
 extern char *selinux_mnt;
 
-#define FILECONTEXTS "/etc/security/selinux/file_contexts"
-
+/* First version of policy supported in mainline Linux. */
 #define DEFAULT_POLICY_VERSION 15
 
 #endif

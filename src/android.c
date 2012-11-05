@@ -18,6 +18,7 @@
 #include <selinux/label.h>
 #include <selinux/avc.h>
 #include <private/android_filesystem_config.h>
+#include "policy.h"
 #include "callbacks.h"
 #include "selinux_internal.h"
 
@@ -670,17 +671,27 @@ int selinux_android_reload_policy(void)
 
 int selinux_android_load_policy(void)
 {
-	mkdir(SELINUXMNT, 0755);
-	if (mount("selinuxfs", SELINUXMNT, "selinuxfs", 0, NULL)) {
+	char *mnt = SELINUXMNT;
+	int rc;
+	rc = mount(SELINUXFS, mnt, SELINUXFS, 0, NULL);
+	if (rc < 0) {
 		if (errno == ENODEV) {
 			/* SELinux not enabled in kernel */
 			return -1;
 		}
+		if (errno == ENOENT) {
+			/* Fall back to legacy mountpoint. */
+			mnt = OLDSELINUXMNT;
+			mkdir(mnt, 0755);
+			rc = mount(SELINUXFS, mnt, SELINUXFS, 0, NULL);
+		}
+	}
+	if (rc < 0) {
 		selinux_log(SELINUX_ERROR,"SELinux:  Could not mount selinuxfs:  %s\n",
 				strerror(errno));
 		return -1;
 	}
-	set_selinuxmnt(SELINUXMNT);
+	set_selinuxmnt(mnt);
 
 	return selinux_android_reload_policy();
 }

@@ -284,9 +284,6 @@ extern int selinux_check_access(const security_context_t scon,
    which performs the initial mount of selinuxfs. */
 void set_selinuxmnt(char *mnt);
 
-/* selinuxfs mountpoint */
-#define SELINUXMNT "/selinux"
-
 #ifdef __cplusplus
 }
 #endif
