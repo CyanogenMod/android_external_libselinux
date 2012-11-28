@@ -43,6 +43,22 @@ static const char *const sepolicy_file[] = {
         "/sepolicy",
         0 };
 
+enum levelFrom {
+	LEVELFROM_NONE,
+	LEVELFROM_APP,
+	LEVELFROM_USER,
+	LEVELFROM_ALL
+};
+
+#if DEBUG
+static char const * const levelFromName[] = {
+	"none",
+	"app",
+	"user",
+	"all"
+};
+#endif
+
 struct seapp_context {
 	/* input selectors */
 	char isSystemServer;
@@ -56,7 +72,7 @@ struct seapp_context {
 	char *type;
 	char *level;
 	char *sebool;
-	char levelFromUid;
+	enum levelFrom levelFrom;
 };
 
 static int seapp_context_cmp(const void *A, const void *B)
@@ -203,9 +219,21 @@ int selinux_android_seapp_context_reload(void)
 					goto oom;
 			} else if (!strcasecmp(name, "levelFromUid")) {
 				if (!strcasecmp(value, "true"))
-					cur->levelFromUid = 1;
+					cur->levelFrom = LEVELFROM_APP;
 				else if (!strcasecmp(value, "false"))
-					cur->levelFromUid = 0;
+					cur->levelFrom = LEVELFROM_NONE;
+				else {
+					goto err;
+				}
+			} else if (!strcasecmp(name, "levelFrom")) {
+				if (!strcasecmp(value, "none"))
+					cur->levelFrom = LEVELFROM_NONE;
+				else if (!strcasecmp(value, "app"))
+					cur->levelFrom = LEVELFROM_APP;
+				else if (!strcasecmp(value, "user"))
+					cur->levelFrom = LEVELFROM_USER;
+				else if (!strcasecmp(value, "all"))
+					cur->levelFrom = LEVELFROM_ALL;
 				else {
 					goto err;
 				}
@@ -238,12 +266,12 @@ int selinux_android_seapp_context_reload(void)
 		int i;
 		for (i = 0; i < nspec; i++) {
 			cur = seapp_contexts[i];
-			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s user=%s seinfo=%s name=%s sebool=%s -> domain=%s type=%s level=%s levelFromUid=%s",
+			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s user=%s seinfo=%s name=%s sebool=%s -> domain=%s type=%s level=%s levelFrom=%s",
 			__FUNCTION__,
 			cur->isSystemServer ? "true" : "false", cur->user,
 			cur->seinfo, cur->name, cur->sebool, cur->domain,
 			cur->type, cur->level,
-			cur->levelFromUid ? "true" : "false");
+			levelFromName[cur->levelFrom]);
 		}
 	}
 #endif
@@ -275,10 +303,10 @@ static void seapp_context_init(void)
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 
 /*
- * Max appid (uid - AID_APP) that can be mapped to category set uniquely
+ * Max id that can be mapped to category set uniquely
  * using the current scheme.
  */
-#define CAT_MAPPING_MAX_APPID (0x1<<16)
+#define CAT_MAPPING_MAX_ID (0x1<<16)
 
 enum seapp_kind {
 	SEAPP_TYPE,
@@ -298,8 +326,10 @@ static int seapp_context_lookup(enum seapp_kind kind,
 	struct seapp_context *cur;
 	int i;
 	size_t n;
-	uid_t appid = 0;
+	uid_t userid;
+	uid_t appid;
 
+	userid = uid / AID_USER;
 	appid = uid % AID_USER;
 	if (appid < AID_APP) {
 		for (n = 0; n < android_id_count; n++) {
@@ -318,7 +348,7 @@ static int seapp_context_lookup(enum seapp_kind kind,
 		appid -= AID_ISOLATED_START;
 	}
 
-	if (appid >= CAT_MAPPING_MAX_APPID)
+	if (appid >= CAT_MAPPING_MAX_ID || userid >= CAT_MAPPING_MAX_ID)
 		goto err;
 
 	for (i = 0; i < nspec; i++) {
@@ -371,11 +401,30 @@ static int seapp_context_lookup(enum seapp_kind kind,
 				goto oom;
 		}
 
-		if (cur->levelFromUid) {
+		if (cur->levelFrom != LEVELFROM_NONE) {
 			char level[255];
-			snprintf(level, sizeof level, "%s:c%u,c%u",
-				 context_range_get(ctx), appid & 0xff,
-				 256 + (appid>>8 & 0xff));
+			switch (cur->levelFrom) {
+			case LEVELFROM_APP:
+				snprintf(level, sizeof level, "%s:c%u,c%u",
+					 context_range_get(ctx), appid & 0xff,
+					 256 + (appid>>8 & 0xff));
+				break;
+			case LEVELFROM_USER:
+				snprintf(level, sizeof level, "%s:c%u,c%u",
+					 context_range_get(ctx),
+					 512 + (userid & 0xff),
+					 768 + (userid>>8 & 0xff));
+				break;
+			case LEVELFROM_ALL:
+				snprintf(level, sizeof level, "%s:c%u,c%u,c%u,c%u",
+					 context_range_get(ctx), appid & 0xff,
+					 256 + (appid>>8 & 0xff),
+					 512 + (userid & 0xff),
+					 768 + (userid>>8 & 0xff));
+				break;
+			default:
+				goto err;
+			}
 			if (context_range_set(ctx, level))
 				goto oom;
 		} else if (cur->level) {
