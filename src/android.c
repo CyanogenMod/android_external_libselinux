@@ -30,19 +30,16 @@
  */
 static char const * const seapp_contexts_file[] = {
 	"/data/security/seapp_contexts",
-	"/data/system/seapp_contexts",
 	"/seapp_contexts",
 	0 };
 
 static const struct selinux_opt seopts[] = {
 	{ SELABEL_OPT_PATH, "/data/security/file_contexts" },
-	{ SELABEL_OPT_PATH, "/data/system/file_contexts" },
 	{ SELABEL_OPT_PATH, "/file_contexts" },
 	{ 0, NULL } };
 
 static const char *const sepolicy_file[] = {
         "/data/security/sepolicy",
-        "/data/system/sepolicy",
         "/sepolicy",
         0 };
 
