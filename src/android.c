@@ -731,7 +731,12 @@ int selinux_android_load_policy(void)
 		if (errno == ENOENT) {
 			/* Fall back to legacy mountpoint. */
 			mnt = OLDSELINUXMNT;
-			mkdir(mnt, 0755);
+			rc = mkdir(mnt, 0755);
+			if (rc == -1 && errno != EEXIST) {
+				selinux_log(SELINUX_ERROR,"SELinux:  Could not mkdir:  %s\n",
+					strerror(errno));
+				return -1;
+			}
 			rc = mount(SELINUXFS, mnt, SELINUXFS, 0, NULL);
 		}
 	}
