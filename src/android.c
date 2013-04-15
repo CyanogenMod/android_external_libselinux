@@ -30,22 +30,22 @@
  * on app data directories.
  */
 static char const * const seapp_contexts_file[] = {
-	"/data/security/seapp_contexts",
+	"/data/security/contexts/seapp_contexts",
 	"/seapp_contexts",
 	0 };
 
 static const struct selinux_opt seopts[] = {
-	{ SELABEL_OPT_PATH, "/data/security/file_contexts" },
+	{ SELABEL_OPT_PATH, "/data/security/current/file_contexts" },
 	{ SELABEL_OPT_PATH, "/file_contexts" },
 	{ 0, NULL } };
 
 static const struct selinux_opt seopt_backup[] = {
-	{ SELABEL_OPT_PATH, "/data/security/file_contexts_backup" },
+	{ SELABEL_OPT_PATH, "/data/security/current/file_contexts_backup" },
 	{ SELABEL_OPT_PATH, "/file_contexts" },
 	{ 0, NULL } };
 
 static const char *const sepolicy_file[] = {
-        "/data/security/sepolicy",
+        "/data/security/current/sepolicy",
         "/sepolicy",
         0 };
 
@@ -690,8 +690,8 @@ bail:
 }
 
 static int file_requires_fixup(const char *pathname,
-					struct selabel_handle *sehandle_old,
-					struct selabel_handle *sehandle_new)
+		struct selabel_handle *sehandle_old,
+		struct selabel_handle *sehandle_new)
 {
 	int ret;
 	struct stat sb;
@@ -720,6 +720,11 @@ static int file_requires_fixup(const char *pathname,
 	if (selabel_lookup(sehandle_new, &new_context, pathname, sb.st_mode) < 0) {
 		ret = -1;
 		goto err;
+	}
+
+	if (strstr(current_context, "unlabeled") != NULL) {
+		ret = 1;
+		goto out;
 	}
 
 	ret = (strcmp(old_context, new_context) && !strcmp(current_context, old_context));
