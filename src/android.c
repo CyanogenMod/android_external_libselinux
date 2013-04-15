@@ -31,7 +31,7 @@
 static char const * const seapp_contexts_file[] = {
 	"/data/security/seapp_contexts",
 	"/seapp_contexts",
-	0 };
+	NULL };
 
 static const struct selinux_opt seopts[] = {
 	{ SELABEL_OPT_PATH, "/data/security/file_contexts" },
@@ -41,7 +41,7 @@ static const struct selinux_opt seopts[] = {
 static const char *const sepolicy_file[] = {
         "/data/security/sepolicy",
         "/sepolicy",
-        0 };
+        NULL };
 
 enum levelFrom {
 	LEVELFROM_NONE,
