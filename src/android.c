@@ -134,7 +134,7 @@ int selinux_android_seapp_context_reload(void)
 	struct seapp_context *cur;
 	char *p, *name = NULL, *value = NULL, *saveptr;
 	size_t len;
-	int i = 0, ret;
+	int i = 0, n, ret;
 
 	while ((fp==NULL) && seapp_contexts_file[i])
 		fp = fopen(seapp_contexts_file[i++], "r");
@@ -142,6 +142,20 @@ int selinux_android_seapp_context_reload(void)
 	if (!fp) {
 		selinux_log(SELINUX_ERROR, "%s:  could not open any seapp_contexts file", __FUNCTION__);
 		return -1;
+	}
+
+	if (seapp_contexts) {
+		for (n = 0; n < nspec; n++) {
+			cur = seapp_contexts[n];
+			free(cur->user);
+			free(cur->seinfo);
+			free(cur->name);
+			free(cur->domain);
+			free(cur->type);
+			free(cur->level);
+			free(cur->sebool);
+		}
+		free(seapp_contexts);
 	}
 
 	nspec = 0;
