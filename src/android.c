@@ -30,7 +30,7 @@
  * on app data directories.
  */
 static char const * const seapp_contexts_file[] = {
-	"/data/security/contexts/seapp_contexts",
+	"/data/security/current/seapp_contexts",
 	"/seapp_contexts",
 	0 };
 
