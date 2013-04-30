@@ -26,7 +26,9 @@ common_SRC_FILES := \
 	src/avc_internal.c \
 	src/avc_sidtab.c \
 	src/get_initial_context.c \
-	src/checkAccess.c
+	src/checkAccess.c \
+	src/sestatus.c \
+	src/deny_unknown.c
 
 common_HOST_FILES := \
 	src/callbacks.c \
