@@ -780,13 +780,15 @@ static int fixcon_recursive(const char *pathname,
 
 	struct dirent *entry;
 	while ((entry = readdir(dir)) != NULL) {
-		char entryname[PATH_MAX];
+		char *entryname;
 		if (!strcmp(entry->d_name, ".."))
 			continue;
 		if (!strcmp(entry->d_name, "."))
 			continue;
-		sprintf(entryname, "%s/%s", pathname, entry->d_name);
+		if (asprintf(&entryname, "%s/%s", pathname, entry->d_name) == -1)
+			continue;
 		fixcon_recursive(entryname, sehandle_old, sehandle_new);
+		free(entryname);
 	}
 
 	if (closedir(dir) < 0)
