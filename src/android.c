@@ -819,16 +819,13 @@ struct selabel_handle* selinux_android_file_context_handle(void)
 
 int selinux_android_reload_policy(void)
 {
-	char path[PATH_MAX];
 	int fd = -1, rc;
 	struct stat sb;
 	void *map = NULL;
 	int i = 0;
 
 	while (fd < 0 && sepolicy_file[i]) {
-		snprintf(path, sizeof(path), "%s",
-			sepolicy_file[i]);
-		fd = open(path, O_RDONLY);
+		fd = open(sepolicy_file[i], O_RDONLY | O_NOFOLLOW);
 		i++;
 	}
 	if (fd < 0) {
@@ -838,14 +835,14 @@ int selinux_android_reload_policy(void)
 	}
 	if (fstat(fd, &sb) < 0) {
 		selinux_log(SELINUX_ERROR, "SELinux:  Could not stat %s:  %s\n",
-				path, strerror(errno));
+				sepolicy_file[i], strerror(errno));
 		close(fd);
 		return -1;
 	}
 	map = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (map == MAP_FAILED) {
 		selinux_log(SELINUX_ERROR, "SELinux:  Could not map %s:  %s\n",
-			path, strerror(errno));
+			sepolicy_file[i], strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -861,7 +858,7 @@ int selinux_android_reload_policy(void)
 
 	munmap(map, sb.st_size);
 	close(fd);
-	selinux_log(SELINUX_INFO, "SELinux: Loaded policy from %s\n", path);
+	selinux_log(SELINUX_INFO, "SELinux: Loaded policy from %s\n", sepolicy_file[i]);
 
 	return 0;
 }
