@@ -771,8 +771,14 @@ static int fixcon_recursive(const char *pathname,
 	if (lstat(pathname, &statresult) < 0)
 		return -1;
 
-	if (!S_ISDIR(statresult.st_mode))
+	if (!S_ISDIR(statresult.st_mode)) {
 		return fixcon_file(pathname, sehandle_old, sehandle_new);
+        } else {
+            /* XXX hack for JB-MR2.  Real fix needed later */
+            if (strstr(pathname, "/lost+found")) {
+              return 0;
+            }
+        }
 
 	DIR *dir = opendir(pathname);
 	if (dir == NULL)
