@@ -705,8 +705,7 @@ bail:
 
 static int file_requires_fixup(const char *pathname,
 		struct selabel_handle *sehandle_old,
-		struct selabel_handle *sehandle_new,
-		char **context)
+		struct selabel_handle *sehandle_new)
 {
 	int ret;
 	struct stat sb;
@@ -755,10 +754,10 @@ err:
 out:
 	if (current_context)
 		freecon(current_context);
+	if (new_context)
+		freecon(new_context);
 	if (old_context)
 		freecon(old_context);
-	if (new_context)
-		*context = new_context;
 	return ret;
 }
 
@@ -767,18 +766,13 @@ static int fixcon_file(const char *pathname,
 		struct selabel_handle *sehandle_new)
 {
 	int requires_fixup;
-	char *new_context = NULL;
 
-	requires_fixup = file_requires_fixup(pathname, sehandle_old, sehandle_new, &new_context);
-
-	if (requires_fixup > 0)
-		lsetfilecon(pathname, new_context);
-
-	if (new_context)
-		freecon(new_context);
-
+	requires_fixup = file_requires_fixup(pathname, sehandle_old, sehandle_new);
 	if (requires_fixup < 0)
 		return -1;
+
+	if (requires_fixup)
+		selinux_android_restorecon(pathname);
 
 	return 0;
 }
