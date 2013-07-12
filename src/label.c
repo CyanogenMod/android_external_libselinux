@@ -95,7 +95,7 @@ out:
 }
 
 static struct selabel_lookup_rec *
-selabel_lookup_common(struct selabel_handle *rec, int translating,
+selabel_lookup_common(struct selabel_handle *rec,
 		      const char *key, int type)
 {
 	struct selabel_lookup_rec *lr;
@@ -111,7 +111,7 @@ int selabel_lookup(struct selabel_handle *rec, security_context_t *con,
 {
 	struct selabel_lookup_rec *lr;
 
-	lr = selabel_lookup_common(rec, 1, key, type);
+	lr = selabel_lookup_common(rec, key, type);
 	if (!lr)
 		return -1;
 
