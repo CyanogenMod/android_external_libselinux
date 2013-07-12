@@ -341,9 +341,7 @@ static int seapp_context_lookup(enum seapp_kind kind,
 				context_t ctx)
 {
 	const char *username = NULL;
-	char *end = NULL;
-	struct passwd *pw;
-	struct seapp_context *cur;
+	struct seapp_context *cur = NULL;
 	int i;
 	size_t n;
 	uid_t userid;
