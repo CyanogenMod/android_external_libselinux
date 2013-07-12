@@ -474,9 +474,10 @@ int selinux_android_setfilecon2(const char *pkgdir,
 				const char *seinfo,
 				uid_t uid)
 {
-	char *orig_ctx_str = NULL, *ctx_str;
+	char *orig_ctx_str = NULL;
+	char *ctx_str = NULL;
 	context_t ctx = NULL;
-	int rc;
+	int rc = -1;
 
 	if (is_selinux_enabled() <= 0)
 		return 0;
@@ -542,7 +543,7 @@ int selinux_android_setcontext(uid_t uid,
 {
 	char *orig_ctx_str = NULL, *ctx_str;
 	context_t ctx = NULL;
-	int rc;
+	int rc = -1;
 
 	if (is_selinux_enabled() <= 0)
 		return 0;
@@ -631,22 +632,21 @@ static pthread_once_t fc_once = PTHREAD_ONCE_INIT;
 int selinux_android_restorecon(const char *pathname)
 {
 
+	char* oldcontext = NULL;
+	char* newcontext = NULL;
+	struct stat sb;
+	int ret = -1;
+
 	if (is_selinux_enabled() <= 0)
 		return 0;
 
 	__selinux_once(fc_once, file_context_init);
 
-	int ret;
-
 	if (!sehandle)
 		goto bail;
 
-	struct stat sb;
-
 	if (lstat(pathname, &sb) < 0)
 		goto err;
-
-	char *oldcontext, *newcontext;
 
 	if (lgetfilecon(pathname, &oldcontext) < 0)
 		goto err;
