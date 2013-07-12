@@ -13,7 +13,6 @@ int is_selinux_enabled(void)
 	char buf[BUFSIZ];
 	FILE *fp;
 	char *bufp;
-	size_t len;
 	int enabled = 0;
 	security_context_t con;
 
