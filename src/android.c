@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <pwd.h>
 #include <grp.h>
+#include <dirent.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/types.h>
@@ -29,17 +30,22 @@
  * on app data directories.
  */
 static char const * const seapp_contexts_file[] = {
-	"/data/security/seapp_contexts",
+	"/data/security/current/seapp_contexts",
 	"/seapp_contexts",
 	NULL };
 
 static const struct selinux_opt seopts[] = {
-	{ SELABEL_OPT_PATH, "/data/security/file_contexts" },
+	{ SELABEL_OPT_PATH, "/data/security/current/file_contexts" },
+	{ SELABEL_OPT_PATH, "/file_contexts" },
+	{ 0, NULL } };
+
+static const struct selinux_opt seopt_backup[] = {
+	{ SELABEL_OPT_PATH, "/data/security/current/file_contexts_backup" },
 	{ SELABEL_OPT_PATH, "/file_contexts" },
 	{ 0, NULL } };
 
 static const char *const sepolicy_file[] = {
-        "/data/security/sepolicy",
+        "/data/security/current/sepolicy",
         "/sepolicy",
         NULL };
 
@@ -586,12 +592,12 @@ out:
 err:
 	if (isSystemServer)
 		selinux_log(SELINUX_ERROR,
-			    "%s:  Error setting context for system server: %s\n",
-			    __FUNCTION__, strerror(errno));
+				"%s:  Error setting context for system server: %s\n",
+				__FUNCTION__, strerror(errno));
 	else 
 		selinux_log(SELINUX_ERROR,
-			    "%s:  Error setting context for app with uid %d, seinfo %s: %s\n",
-			    __FUNCTION__, uid, seinfo, strerror(errno));
+				"%s:  Error setting context for app with uid %d, seinfo %s: %s\n",
+				__FUNCTION__, uid, seinfo, strerror(errno));
 
 	rc = -1;
 	goto out;
@@ -603,20 +609,40 @@ oom:
 
 static struct selabel_handle *sehandle = NULL;
 
-static struct selabel_handle *file_context_open(void)
-{
+static struct selabel_handle *get_selabel_handle(const struct selinux_opt opts[]) {
 	struct selabel_handle *h;
 	int i = 0;
 
 	h = NULL;
-	while ((h == NULL) && seopts[i].value) {
-		h = selabel_open(SELABEL_CTX_FILE, &seopts[i], 1);
+	while ((h == NULL) && opts[i].value) {
+		h = selabel_open(SELABEL_CTX_FILE, &opts[i], 1);
 		i++;
 	}
 
+	return h;
+}
+
+static struct selabel_handle *file_context_open(void)
+{
+	struct selabel_handle *h;
+
+	h = get_selabel_handle(seopts);
+
 	if (!h)
-		selinux_log(SELINUX_ERROR, "%s: Error getting sehandle label (%s)\n",
-			    __FUNCTION__, strerror(errno));
+		selinux_log(SELINUX_ERROR, "%s: Error getting file context handle (%s)\n",
+				__FUNCTION__, strerror(errno));
+	return h;
+}
+
+static struct selabel_handle *file_context_backup_open(void)
+{
+	struct selabel_handle *h;
+
+	h = get_selabel_handle(seopt_backup);
+
+	if (!h)
+		selinux_log(SELINUX_ERROR, "%s: Error getting backup file context handle (%s)\n",
+				__FUNCTION__, strerror(errno));
 	return h;
 }
 
@@ -675,24 +701,143 @@ bail:
 	goto out;
 }
 
+static int file_requires_fixup(const char *pathname,
+		struct selabel_handle *sehandle_old,
+		struct selabel_handle *sehandle_new)
+{
+	int ret;
+	struct stat sb;
+	char *current_context, *old_context, *new_context;
+
+	ret = 0;
+	old_context = NULL;
+	new_context = NULL;
+	current_context = NULL;
+
+	if (lstat(pathname, &sb) < 0) {
+		ret = -1;
+		goto err;
+	}
+
+	if (lgetfilecon(pathname, &current_context) < 0) {
+		ret = -1;
+		goto err;
+	}
+
+	if (selabel_lookup(sehandle_old, &old_context, pathname, sb.st_mode) < 0) {
+		ret = -1;
+		goto err;
+	}
+
+	if (selabel_lookup(sehandle_new, &new_context, pathname, sb.st_mode) < 0) {
+		ret = -1;
+		goto err;
+	}
+
+	if (strstr(current_context, "unlabeled") != NULL) {
+		ret = 1;
+		goto out;
+	}
+
+	ret = (strcmp(old_context, new_context) && !strcmp(current_context, old_context));
+	goto out;
+
+err:
+	selinux_log(SELINUX_ERROR,
+		"%s:  Error comparing context for %s (%s)\n",
+		__FUNCTION__,
+		pathname,
+		strerror(errno));
+
+out:
+	if (current_context)
+		freecon(current_context);
+	if (new_context)
+		freecon(new_context);
+	if (old_context)
+		freecon(old_context);
+	return ret;
+}
+
+static int fixcon_file(const char *pathname,
+		struct selabel_handle *sehandle_old,
+		struct selabel_handle *sehandle_new)
+{
+	int requires_fixup;
+
+	requires_fixup = file_requires_fixup(pathname, sehandle_old, sehandle_new);
+	if (requires_fixup < 0)
+		return -1;
+
+	if (requires_fixup)
+		selinux_android_restorecon(pathname);
+
+	return 0;
+}
+
+static int fixcon_recursive(const char *pathname,
+		struct selabel_handle *sehandle_old,
+		struct selabel_handle *sehandle_new)
+{
+	struct stat statresult;
+	if (lstat(pathname, &statresult) < 0)
+		return -1;
+
+	if (!S_ISDIR(statresult.st_mode))
+		return fixcon_file(pathname, sehandle_old, sehandle_new);
+
+	DIR *dir = opendir(pathname);
+	if (dir == NULL)
+		return -1;
+
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != NULL) {
+		char *entryname;
+		if (!strcmp(entry->d_name, ".."))
+			continue;
+		if (!strcmp(entry->d_name, "."))
+			continue;
+		if (asprintf(&entryname, "%s/%s", pathname, entry->d_name) == -1)
+			continue;
+		fixcon_recursive(entryname, sehandle_old, sehandle_new);
+		free(entryname);
+	}
+
+	if (closedir(dir) < 0)
+		return -1;
+
+	return fixcon_file(pathname, sehandle_old, sehandle_new);
+}
+
+int selinux_android_fixcon(const char *pathname)
+{
+	struct selabel_handle *sehandle_old, *sehandle_new;
+
+	sehandle_old = file_context_backup_open();
+	if (sehandle_old == NULL)
+		return -1;
+
+	sehandle_new = file_context_open();
+	if (sehandle_new == NULL)
+		return -1;
+
+	return fixcon_recursive(pathname, sehandle_old, sehandle_new);
+}
 
 struct selabel_handle* selinux_android_file_context_handle(void)
 {
-        return file_context_open();
+		return file_context_open();
 }
 
 int selinux_android_reload_policy(void)
 {
-	char path[PATH_MAX];
 	int fd = -1, rc;
 	struct stat sb;
 	void *map = NULL;
 	int i = 0;
 
 	while (fd < 0 && sepolicy_file[i]) {
-		snprintf(path, sizeof(path), "%s",
-			sepolicy_file[i]);
-		fd = open(path, O_RDONLY);
+		fd = open(sepolicy_file[i], O_RDONLY | O_NOFOLLOW);
 		i++;
 	}
 	if (fd < 0) {
@@ -702,14 +847,14 @@ int selinux_android_reload_policy(void)
 	}
 	if (fstat(fd, &sb) < 0) {
 		selinux_log(SELINUX_ERROR, "SELinux:  Could not stat %s:  %s\n",
-				path, strerror(errno));
+				sepolicy_file[i], strerror(errno));
 		close(fd);
 		return -1;
 	}
 	map = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (map == MAP_FAILED) {
 		selinux_log(SELINUX_ERROR, "SELinux:  Could not map %s:  %s\n",
-			path, strerror(errno));
+			sepolicy_file[i], strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -725,7 +870,7 @@ int selinux_android_reload_policy(void)
 
 	munmap(map, sb.st_size);
 	close(fd);
-	selinux_log(SELINUX_INFO, "SELinux: Loaded policy from %s\n", path);
+	selinux_log(SELINUX_INFO, "SELinux: Loaded policy from %s\n", sepolicy_file[i]);
 
 	return 0;
 }
