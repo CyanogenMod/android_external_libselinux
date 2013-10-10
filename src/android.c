@@ -65,14 +65,18 @@ static char const * const levelFromName[] = {
 };
 #endif
 
+struct prefix_str {
+	size_t len;
+	char *str;
+	char is_prefix;
+};
+
 struct seapp_context {
 	/* input selectors */
 	char isSystemServer;
-	char *user;
-	size_t len;
-	char prefix;
+	struct prefix_str user;
 	char *seinfo;
-	char *name;
+	struct prefix_str name;
 	/* outputs */
 	char *domain;
 	char *type;
@@ -91,19 +95,19 @@ static int seapp_context_cmp(const void *A, const void *B)
 		return (s1->isSystemServer ? -1 : 1);
 
 	/* Give precedence to a specified user= over an unspecified user=. */
-	if (s1->user && !s2->user)
+	if (s1->user.str && !s2->user.str)
 		return -1;
-	if (!s1->user && s2->user)
+	if (!s1->user.str && s2->user.str)
 		return 1;
 
-	if (s1->user) {
+	if (s1->user.str) {
 		/* Give precedence to a fixed user= string over a prefix. */
-		if (s1->prefix != s2->prefix)
-			return (s2->prefix ? -1 : 1);
+		if (s1->user.is_prefix != s2->user.is_prefix)
+			return (s2->user.is_prefix ? -1 : 1);
 
 		/* Give precedence to a longer prefix over a shorter prefix. */
-		if (s1->prefix && s1->len != s2->len)
-			return (s1->len > s2->len) ? -1 : 1;
+		if (s1->user.is_prefix && s1->user.len != s2->user.len)
+			return (s1->user.len > s2->user.len) ? -1 : 1;
 	}
 
 	/* Give precedence to a specified seinfo= over an unspecified seinfo=. */
@@ -113,10 +117,20 @@ static int seapp_context_cmp(const void *A, const void *B)
 		return 1;
 
 	/* Give precedence to a specified name= over an unspecified name=. */
-	if (s1->name && !s2->name)
+	if (s1->name.str && !s2->name.str)
 		return -1;
-	if (!s1->name && s2->name)
+	if (!s1->name.str && s2->name.str)
 		return 1;
+
+	if (s1->name.str) {
+		/* Give precedence to a fixed name= string over a prefix. */
+		if (s1->name.is_prefix != s2->name.is_prefix)
+			return (s2->name.is_prefix ? -1 : 1);
+
+		/* Give precedence to a longer prefix over a shorter prefix. */
+		if (s1->name.is_prefix && s1->name.len != s2->name.len)
+			return (s1->name.len > s2->name.len) ? -1 : 1;
+	}
 
         /* Give precedence to a specified sebool= over an unspecified sebool=. */
         if (s1->sebool && !s2->sebool)
@@ -153,9 +167,9 @@ int selinux_android_seapp_context_reload(void)
 	if (seapp_contexts) {
 		for (n = 0; n < nspec; n++) {
 			cur = seapp_contexts[n];
-			free(cur->user);
+			free(cur->user.str);
 			free(cur->seinfo);
-			free(cur->name);
+			free(cur->name.str);
 			free(cur->domain);
 			free(cur->type);
 			free(cur->level);
@@ -215,20 +229,23 @@ int selinux_android_seapp_context_reload(void)
 					goto err;
 				}
 			} else if (!strcasecmp(name, "user")) {
-				cur->user = strdup(value);
-				if (!cur->user)
+				cur->user.str = strdup(value);
+				if (!cur->user.str)
 					goto oom;
-				cur->len = strlen(cur->user);
-				if (cur->user[cur->len-1] == '*')
-					cur->prefix = 1;
+				cur->user.len = strlen(cur->user.str);
+				if (cur->user.str[cur->user.len-1] == '*')
+					cur->user.is_prefix = 1;
 			} else if (!strcasecmp(name, "seinfo")) {
 				cur->seinfo = strdup(value);
 				if (!cur->seinfo)
 					goto oom;
 			} else if (!strcasecmp(name, "name")) {
-				cur->name = strdup(value);
-				if (!cur->name)
+				cur->name.str = strdup(value);
+				if (!cur->name.str)
 					goto oom;
+				cur->name.len = strlen(cur->name.str);
+				if (cur->name.str[cur->name.len-1] == '*')
+					cur->name.is_prefix = 1;
 			} else if (!strcasecmp(name, "domain")) {
 				cur->domain = strdup(value);
 				if (!cur->domain)
@@ -288,8 +305,8 @@ int selinux_android_seapp_context_reload(void)
 			cur = seapp_contexts[i];
 			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s user=%s seinfo=%s name=%s sebool=%s -> domain=%s type=%s level=%s levelFrom=%s",
 			__FUNCTION__,
-			cur->isSystemServer ? "true" : "false", cur->user,
-			cur->seinfo, cur->name, cur->sebool, cur->domain,
+			cur->isSystemServer ? "true" : "false", cur->user.str,
+			cur->seinfo, cur->name.str, cur->sebool, cur->domain,
 			cur->type, cur->level,
 			levelFromName[cur->levelFrom]);
 		}
@@ -375,12 +392,12 @@ static int seapp_context_lookup(enum seapp_kind kind,
 		if (cur->isSystemServer != isSystemServer)
 			continue;
 
-		if (cur->user) {
-			if (cur->prefix) {
-				if (strncasecmp(username, cur->user, cur->len-1))
+		if (cur->user.str) {
+			if (cur->user.is_prefix) {
+				if (strncasecmp(username, cur->user.str, cur->user.len-1))
 					continue;
 			} else {
-				if (strcasecmp(username, cur->user))
+				if (strcasecmp(username, cur->user.str))
 					continue;
 			}
 		}
@@ -390,9 +407,17 @@ static int seapp_context_lookup(enum seapp_kind kind,
 				continue;
 		}
 
-		if (cur->name) {
-			if (!pkgname || strcasecmp(pkgname, cur->name))
+		if (cur->name.str) {
+			if(!pkgname)
 				continue;
+
+			if (cur->name.is_prefix) {
+				if (strncasecmp(pkgname, cur->name.str, cur->name.len-1))
+					continue;
+			} else {
+				if (strcasecmp(pkgname, cur->name.str))
+					continue;
+			}
 		}
 
 		if (kind == SEAPP_TYPE && !cur->type)
