@@ -847,14 +847,14 @@ int selinux_android_reload_policy(void)
 	}
 	if (fstat(fd, &sb) < 0) {
 		selinux_log(SELINUX_ERROR, "SELinux:  Could not stat %s:  %s\n",
-				sepolicy_file[i], strerror(errno));
+				sepolicy_file[i-1], strerror(errno));
 		close(fd);
 		return -1;
 	}
 	map = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (map == MAP_FAILED) {
 		selinux_log(SELINUX_ERROR, "SELinux:  Could not map %s:  %s\n",
-			sepolicy_file[i], strerror(errno));
+			sepolicy_file[i-1], strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -870,7 +870,7 @@ int selinux_android_reload_policy(void)
 
 	munmap(map, sb.st_size);
 	close(fd);
-	selinux_log(SELINUX_INFO, "SELinux: Loaded policy from %s\n", sepolicy_file[i]);
+	selinux_log(SELINUX_INFO, "SELinux: Loaded policy from %s\n", sepolicy_file[i-1]);
 
 	return 0;
 }
