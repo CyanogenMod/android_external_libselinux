@@ -104,14 +104,14 @@ static int find_stem_from_spec(struct saved_data *data, const char *buf)
 	if (data->alloc_stems == num) {
 		stem_t *tmp_arr;
 		data->alloc_stems = data->alloc_stems * 2 + 16;
-		tmp_arr = realloc(data->stem_arr,
+		tmp_arr = (stem_t *) realloc(data->stem_arr,
 				  sizeof(stem_t) * data->alloc_stems);
 		if (!tmp_arr)
 			return -1;
 		data->stem_arr = tmp_arr;
 	}
 	data->stem_arr[num].len = stem_len;
-	data->stem_arr[num].buf = malloc(stem_len + 1);
+	data->stem_arr[num].buf = (char *) malloc(stem_len + 1);
 	if (!data->stem_arr[num].buf)
 		return -1;
 	memcpy(data->stem_arr[num].buf, buf, stem_len);
@@ -240,7 +240,7 @@ static int compile_regex(struct saved_data *data, spec_t *spec, char **errbuf)
 
 	/* Anchor the regular expression. */
 	len = strlen(reg_buf);
-	cp = anchored_regex = malloc(len + 3);
+	cp = anchored_regex = (char *) malloc(len + 3);
 	if (!anchored_regex)
 		return -1;
 	/* Create ^...$ regexp.  */
@@ -257,7 +257,7 @@ static int compile_regex(struct saved_data *data, spec_t *spec, char **errbuf)
 		size_t errsz = 0;
 		errsz = regerror(regerr, &spec->regex, NULL, 0);
 		if (errsz && errbuf)
-			*errbuf = malloc(errsz);
+			*errbuf = (char *) malloc(errsz);
 		if (errbuf && *errbuf)
 			(void)regerror(regerr, &spec->regex,
 				       *errbuf, errsz);
@@ -493,7 +493,7 @@ static int init(struct selabel_handle *rec, const struct selinux_opt *opts,
 				goto finish;
 			}
 			if (NULL == (data->spec_arr =
-				     malloc(sizeof(spec_t) * data->nspec)))
+				     (spec_t *) malloc(sizeof(spec_t) * data->nspec)))
 				goto finish;
 			memset(data->spec_arr, 0, sizeof(spec_t)*data->nspec);
 			maxnspec = data->nspec;
@@ -506,7 +506,7 @@ static int init(struct selabel_handle *rec, const struct selinux_opt *opts,
 	}
 
 	/* Move exact pathname specifications to the end. */
-	spec_copy = malloc(sizeof(spec_t) * data->nspec);
+	spec_copy = (spec_t *) malloc(sizeof(spec_t) * data->nspec);
 	if (!spec_copy)
 		goto finish;
 	j = 0;
@@ -586,7 +586,7 @@ static struct selabel_lookup_rec *lookup(struct selabel_handle *rec,
 
 	/* Remove duplicate slashes */
 	if ((next_slash = strstr(key, "//"))) {
-		clean_key = malloc(strlen(key) + 1);
+		clean_key = (char *) malloc(strlen(key) + 1);
 		if (!clean_key)
 			goto finish;
 		prev_slash = key;
