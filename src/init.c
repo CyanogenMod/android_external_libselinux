@@ -102,7 +102,7 @@ void fini_selinuxmnt(void)
 	selinux_mnt = NULL;
 }
 
-void set_selinuxmnt(char *mnt)
+void set_selinuxmnt(const char *mnt)
 {
 	selinux_mnt = strdup(mnt);
 }
