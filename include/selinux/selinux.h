@@ -282,7 +282,7 @@ extern int selinux_check_access(const security_context_t scon,
    Normally, this is determined automatically during libselinux 
    initialization, but this is not always possible, e.g. for /sbin/init
    which performs the initial mount of selinuxfs. */
-void set_selinuxmnt(char *mnt);
+void set_selinuxmnt(const char *mnt);
 
 #ifdef __cplusplus
 }

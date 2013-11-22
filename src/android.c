@@ -87,7 +87,8 @@ struct seapp_context {
 
 static int seapp_context_cmp(const void *A, const void *B)
 {
-	const struct seapp_context *const *sp1 = A, *const *sp2 = B;
+	const struct seapp_context *const *sp1 = (const struct seapp_context *const *) A;
+	const struct seapp_context *const *sp2 = (const struct seapp_context *const *) B;
 	const struct seapp_context *s1 = *sp1, *s2 = *sp2;
 
 	/* Give precedence to isSystemServer=true. */
@@ -188,7 +189,7 @@ int selinux_android_seapp_context_reload(void)
 		nspec++;
 	}
 
-	seapp_contexts = calloc(nspec, sizeof(struct seapp_context *));
+	seapp_contexts = (struct seapp_context **) calloc(nspec, sizeof(struct seapp_context *));
 	if (!seapp_contexts)
 		goto oom;
 
@@ -205,7 +206,7 @@ int selinux_android_seapp_context_reload(void)
 		if (*p == '#' || *p == 0)
 			continue;
 
-		cur = calloc(1, sizeof(struct seapp_context));
+		cur = (struct seapp_context *) calloc(1, sizeof(struct seapp_context));
 		if (!cur)
 			goto oom;
 
@@ -902,7 +903,7 @@ int selinux_android_reload_policy(void)
 
 int selinux_android_load_policy(void)
 {
-	char *mnt = SELINUXMNT;
+	const char *mnt = SELINUXMNT;
 	int rc;
 	rc = mount(SELINUXFS, mnt, SELINUXFS, 0, NULL);
 	if (rc < 0) {
