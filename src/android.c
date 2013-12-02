@@ -449,19 +449,18 @@ static int seapp_context_lookup(enum seapp_kind kind,
 			char level[255];
 			switch (cur->levelFrom) {
 			case LEVELFROM_APP:
-				snprintf(level, sizeof level, "%s:c%u,c%u",
-					 context_range_get(ctx), appid & 0xff,
+				snprintf(level, sizeof level, "s0:c%u,c%u",
+					 appid & 0xff,
 					 256 + (appid>>8 & 0xff));
 				break;
 			case LEVELFROM_USER:
-				snprintf(level, sizeof level, "%s:c%u,c%u",
-					 context_range_get(ctx),
+				snprintf(level, sizeof level, "s0:c%u,c%u",
 					 512 + (userid & 0xff),
 					 768 + (userid>>8 & 0xff));
 				break;
 			case LEVELFROM_ALL:
-				snprintf(level, sizeof level, "%s:c%u,c%u,c%u,c%u",
-					 context_range_get(ctx), appid & 0xff,
+				snprintf(level, sizeof level, "s0:c%u,c%u,c%u,c%u",
+					 appid & 0xff,
 					 256 + (appid>>8 & 0xff),
 					 512 + (userid & 0xff),
 					 768 + (userid>>8 & 0xff));
