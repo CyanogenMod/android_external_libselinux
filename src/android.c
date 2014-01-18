@@ -30,22 +30,18 @@
  * on app data directories.
  */
 static char const * const seapp_contexts_file[] = {
-	"/data/security/current/seapp_contexts",
 	"/seapp_contexts",
 	0 };
 
 static const struct selinux_opt seopts[] = {
-	{ SELABEL_OPT_PATH, "/data/security/current/file_contexts" },
 	{ SELABEL_OPT_PATH, "/file_contexts" },
 	{ 0, NULL } };
 
 static const struct selinux_opt seopt_backup[] = {
-	{ SELABEL_OPT_PATH, "/data/security/current/file_contexts_backup" },
 	{ SELABEL_OPT_PATH, "/file_contexts" },
 	{ 0, NULL } };
 
 static const char *const sepolicy_file[] = {
-        "/data/security/current/sepolicy",
         "/sepolicy",
         0 };
 
