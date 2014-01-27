@@ -39,11 +39,6 @@ static const struct selinux_opt seopts[] = {
 	{ SELABEL_OPT_PATH, "/file_contexts" },
 	{ 0, NULL } };
 
-static const struct selinux_opt seopt_backup[] = {
-	{ SELABEL_OPT_PATH, "/data/security/current/file_contexts_backup" },
-	{ SELABEL_OPT_PATH, "/file_contexts" },
-	{ 0, NULL } };
-
 static const char *const sepolicy_file[] = {
         "/data/security/current/sepolicy",
         "/sepolicy",
@@ -655,18 +650,6 @@ static struct selabel_handle *file_context_open(void)
 
 	if (!h)
 		selinux_log(SELINUX_ERROR, "%s: Error getting file context handle (%s)\n",
-				__FUNCTION__, strerror(errno));
-	return h;
-}
-
-static struct selabel_handle *file_context_backup_open(void)
-{
-	struct selabel_handle *h;
-
-	h = get_selabel_handle(seopt_backup);
-
-	if (!h)
-		selinux_log(SELINUX_ERROR, "%s: Error getting backup file context handle (%s)\n",
 				__FUNCTION__, strerror(errno));
 	return h;
 }
