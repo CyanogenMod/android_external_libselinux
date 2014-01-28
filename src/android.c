@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <ctype.h>
 #include <errno.h>
 #include <pwd.h>
@@ -12,12 +13,14 @@
 #include <sys/mount.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/xattr.h>
 #include <fcntl.h>
 #include <selinux/selinux.h>
 #include <selinux/context.h>
 #include <selinux/android.h>
 #include <selinux/label.h>
 #include <selinux/avc.h>
+#include <mincrypt/sha.h>
 #include <private/android_filesystem_config.h>
 #include "policy.h"
 #include "callbacks.h"
@@ -628,18 +631,63 @@ oom:
 }
 
 static struct selabel_handle *sehandle = NULL;
+#define FC_DIGEST_SIZE SHA_DIGEST_SIZE
+static uint8_t fc_digest[FC_DIGEST_SIZE];
 
-static struct selabel_handle *get_selabel_handle(const struct selinux_opt opts[]) {
-	struct selabel_handle *h;
-	int i = 0;
+static struct selabel_handle *get_selabel_handle(const struct selinux_opt opts[])
+{
+    struct selabel_handle *h;
+    unsigned int i = 0;
+    int fd;
+    struct stat sb;
+    void *map;
 
-	h = NULL;
-	while ((h == NULL) && opts[i].value) {
-		h = selabel_open(SELABEL_CTX_FILE, &opts[i], 1);
-		i++;
-	}
+    h = NULL;
+    while ((h == NULL) && opts[i].value) {
+        h = selabel_open(SELABEL_CTX_FILE, &opts[i], 1);
+        if (h)
+            break;
+        i++;
+    }
 
-	return h;
+    if (!h)
+        return NULL;
+
+    fd = open(opts[i].value, O_RDONLY | O_NOFOLLOW);
+    if (fd < 0) {
+        selinux_log(SELINUX_ERROR, "SELinux:  Could not open %s:  %s\n",
+                    opts[i].value, strerror(errno));
+        goto err;
+    }
+    if (fstat(fd, &sb) < 0) {
+        selinux_log(SELINUX_ERROR, "SELinux:  Could not stat %s:  %s\n",
+                    opts[i].value, strerror(errno));
+        close(fd);
+        goto err;
+    }
+    map = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (map == MAP_FAILED) {
+        selinux_log(SELINUX_ERROR, "SELinux:  Could not map %s:  %s\n",
+                    opts[i].value, strerror(errno));
+        close(fd);
+        goto err;
+    }
+    SHA_hash(map, sb.st_size, fc_digest);
+    munmap(map, sb.st_size);
+    close(fd);
+
+    selinux_log(SELINUX_INFO, "SELinux: Loaded file_contexts from %s, ",
+                opts[i].value);
+    selinux_log(SELINUX_INFO, "digest=");
+    for (i = 0; i < sizeof fc_digest; i++)
+        selinux_log(SELINUX_INFO, "%02x",fc_digest[i]);
+    selinux_log(SELINUX_INFO, "\n");
+
+    return h;
+
+err:
+    selabel_close(h);
+    return NULL;
 }
 
 static struct selabel_handle *file_context_open(void)
@@ -660,7 +708,9 @@ static void file_context_init(void)
         sehandle = file_context_open();
 }
 
-static int restorecon_sb(const char *pathname, const struct stat *sb)
+#define RESTORECON_LAST "security.restorecon_last"
+
+static int restorecon_sb(const char *pathname, const struct stat *sb, bool setrestoreconlast)
 {
     char *secontext = NULL;
     char *oldsecontext = NULL;
@@ -686,6 +736,10 @@ static int restorecon_sb(const char *pathname, const struct stat *sb)
     }
     freecon(oldsecontext);
     freecon(secontext);
+
+    if (setrestoreconlast && S_ISDIR(sb->st_mode))
+        setxattr(pathname, RESTORECON_LAST, fc_digest, sizeof fc_digest, 0);
+
     return 0;
 }
 
@@ -706,14 +760,14 @@ int selinux_android_restorecon(const char *pathname)
     if (lstat(pathname, &sb) < 0)
         return -errno;
 
-    return restorecon_sb(pathname, &sb);
+    return restorecon_sb(pathname, &sb, false);
 }
 
 static int nftw_restorecon(const char* filename, const struct stat* statptr,
     int fileflags __attribute__((unused)),
     struct FTW* pftw __attribute__((unused)))
 {
-    restorecon_sb(filename, statptr);
+    restorecon_sb(filename, statptr, true);
     return 0;
 }
 
@@ -721,6 +775,8 @@ int selinux_android_restorecon_recursive(const char* pathname)
 {
     int fd_limit = 20;
     int flags = FTW_DEPTH | FTW_MOUNT | FTW_PHYS;
+    char xattr_value[FC_DIGEST_SIZE];
+    ssize_t size;
 
     if (is_selinux_enabled() <= 0)
         return 0;
@@ -729,6 +785,14 @@ int selinux_android_restorecon_recursive(const char* pathname)
 
     if (!sehandle)
         return 0;
+
+    size = getxattr(pathname, RESTORECON_LAST, xattr_value, sizeof fc_digest);
+    if (size == sizeof fc_digest && memcmp(fc_digest, xattr_value, sizeof fc_digest) == 0) {
+        selinux_log(SELINUX_INFO,
+                    "SELinux: Skipping restorecon_recursive(%s)\n",
+                    pathname);
+        return 0;
+    }
 
     return nftw(pathname, nftw_restorecon, fd_limit, flags);
 }
