@@ -7,7 +7,7 @@
 #include <errno.h>
 #include <pwd.h>
 #include <grp.h>
-#include <dirent.h>
+#include <ftw.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/types.h>
@@ -656,62 +656,91 @@ static struct selabel_handle *file_context_open(void)
 
 static void file_context_init(void)
 {
-	sehandle = file_context_open();
+    if (!sehandle)
+        sehandle = file_context_open();
+}
+
+static int restorecon_sb(const char *pathname, const struct stat *sb)
+{
+    char *secontext = NULL;
+    char *oldsecontext = NULL;
+    int i;
+
+    if (selabel_lookup(sehandle, &secontext, pathname, sb->st_mode) < 0)
+        return -errno;
+
+    if (lgetfilecon(pathname, &oldsecontext) < 0) {
+        freecon(secontext);
+        return -errno;
+    }
+
+    if (strcmp(oldsecontext, secontext) != 0) {
+        if (lsetfilecon(pathname, secontext) < 0) {
+            selinux_log(SELINUX_ERROR,
+                        "SELinux: Could not set context for %s to %s:  %s\n",
+                        pathname, secontext, strerror(errno));
+            freecon(oldsecontext);
+            freecon(secontext);
+            return -errno;
+        }
+    }
+    freecon(oldsecontext);
+    freecon(secontext);
+    return 0;
 }
 
 static pthread_once_t fc_once = PTHREAD_ONCE_INIT;
 
 int selinux_android_restorecon(const char *pathname)
 {
+    struct stat sb;
 
-	char* oldcontext = NULL;
-	char* newcontext = NULL;
-	struct stat sb;
-	int ret = -1;
+    if (is_selinux_enabled() <= 0)
+        return 0;
 
-	if (is_selinux_enabled() <= 0)
-		return 0;
+    __selinux_once(fc_once, file_context_init);
 
-	__selinux_once(fc_once, file_context_init);
+    if (!sehandle)
+        return 0;
 
-	if (!sehandle)
-		goto bail;
+    if (lstat(pathname, &sb) < 0)
+        return -errno;
 
-	if (lstat(pathname, &sb) < 0)
-		goto err;
+    return restorecon_sb(pathname, &sb);
+}
 
-	if (lgetfilecon(pathname, &oldcontext) < 0)
-		goto err;
+static int nftw_restorecon(const char* filename, const struct stat* statptr,
+    int fileflags __attribute__((unused)),
+    struct FTW* pftw __attribute__((unused)))
+{
+    restorecon_sb(filename, statptr);
+    return 0;
+}
 
-	if (selabel_lookup(sehandle, &newcontext, pathname, sb.st_mode) < 0)
-		goto err;
+int selinux_android_restorecon_recursive(const char* pathname)
+{
+    int fd_limit = 20;
+    int flags = FTW_DEPTH | FTW_MOUNT | FTW_PHYS;
 
-	if (strcmp(newcontext, "<<none>>") && strcmp(oldcontext, newcontext))
-		if (lsetfilecon(pathname, newcontext) < 0)
-			goto err;
+    if (is_selinux_enabled() <= 0)
+        return 0;
 
-	ret = 0;
-out:
-	if (oldcontext)
-		freecon(oldcontext);
-	if (newcontext)
-		freecon(newcontext);
+    __selinux_once(fc_once, file_context_init);
 
-	return ret;
+    if (!sehandle)
+        return 0;
 
-err:
-	selinux_log(SELINUX_ERROR,
-		    "%s:  Error restoring context for %s (%s)\n",
-		    __FUNCTION__, pathname, strerror(errno));
-
-bail:
-	ret = -1;
-	goto out;
+    return nftw(pathname, nftw_restorecon, fd_limit, flags);
 }
 
 struct selabel_handle* selinux_android_file_context_handle(void)
 {
-		return file_context_open();
+    return file_context_open();
+}
+
+void selinux_android_set_sehandle(const struct selabel_handle *hndl)
+{
+    sehandle = (struct selabel_handle *) hndl;
 }
 
 int selinux_android_reload_policy(void)
