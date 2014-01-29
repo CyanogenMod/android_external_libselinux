@@ -676,12 +676,8 @@ static struct selabel_handle *get_selabel_handle(const struct selinux_opt opts[]
     munmap(map, sb.st_size);
     close(fd);
 
-    selinux_log(SELINUX_INFO, "SELinux: Loaded file_contexts from %s, ",
+    selinux_log(SELINUX_INFO, "SELinux: Loaded file_contexts from %s\n",
                 opts[i].value);
-    selinux_log(SELINUX_INFO, "digest=");
-    for (i = 0; i < sizeof fc_digest; i++)
-        selinux_log(SELINUX_INFO, "%02x",fc_digest[i]);
-    selinux_log(SELINUX_INFO, "\n");
 
     return h;
 
