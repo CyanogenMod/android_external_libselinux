@@ -8,13 +8,13 @@
 #include <errno.h>
 #include <pwd.h>
 #include <grp.h>
-#include <ftw.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/xattr.h>
 #include <fcntl.h>
+#include <fts.h>
 #include <selinux/selinux.h>
 #include <selinux/context.h>
 #include <selinux/android.h>
@@ -704,9 +704,11 @@ static void file_context_init(void)
         sehandle = file_context_open();
 }
 
+static pthread_once_t fc_once = PTHREAD_ONCE_INIT;
+
 #define RESTORECON_LAST "security.restorecon_last"
 
-static int restorecon_sb(const char *pathname, const struct stat *sb, bool setrestoreconlast)
+static int restorecon_sb(const char *pathname, const struct stat *sb, bool setrestoreconlast, bool nochange, bool verbose)
 {
     char *secontext = NULL;
     char *oldsecontext = NULL;
@@ -721,56 +723,41 @@ static int restorecon_sb(const char *pathname, const struct stat *sb, bool setre
     }
 
     if (strcmp(oldsecontext, secontext) != 0) {
-        if (lsetfilecon(pathname, secontext) < 0) {
-            selinux_log(SELINUX_ERROR,
-                        "SELinux: Could not set context for %s to %s:  %s\n",
-                        pathname, secontext, strerror(errno));
-            freecon(oldsecontext);
-            freecon(secontext);
-            return -1;
+        if (verbose)
+            selinux_log(SELINUX_INFO,
+                        "SELinux:  Relabeling %s from %s to %s.\n", pathname, oldsecontext, secontext);
+        if (!nochange) {
+            if (lsetfilecon(pathname, secontext) < 0) {
+                selinux_log(SELINUX_ERROR,
+                            "SELinux: Could not set context for %s to %s:  %s\n",
+                            pathname, secontext, strerror(errno));
+                freecon(oldsecontext);
+                freecon(secontext);
+                return -1;
+            }
         }
     }
     freecon(oldsecontext);
     freecon(secontext);
 
-    if (setrestoreconlast && S_ISDIR(sb->st_mode))
+    if (setrestoreconlast && !nochange && S_ISDIR(sb->st_mode))
         setxattr(pathname, RESTORECON_LAST, fc_digest, sizeof fc_digest, 0);
 
     return 0;
 }
 
-static pthread_once_t fc_once = PTHREAD_ONCE_INIT;
-
-int selinux_android_restorecon(const char *pathname)
+int selinux_android_restorecon_flags(const char* pathname, unsigned int flags)
 {
+    bool nochange = (flags & SELINUX_ANDROID_RESTORECON_NOCHANGE) ? true : false;
+    bool verbose = (flags & SELINUX_ANDROID_RESTORECON_VERBOSE) ? true : false;
+    bool recurse = (flags & SELINUX_ANDROID_RESTORECON_RECURSE) ? true : false;
+    bool force = (flags & SELINUX_ANDROID_RESTORECON_FORCE) ? true : false;
     struct stat sb;
-
-    if (is_selinux_enabled() <= 0)
-        return 0;
-
-    __selinux_once(fc_once, file_context_init);
-
-    if (!sehandle)
-        return 0;
-
-    if (lstat(pathname, &sb) < 0)
-        return -1;
-
-    return restorecon_sb(pathname, &sb, false);
-}
-
-static int nftw_restorecon(const char* filename, const struct stat* statptr,
-    int fileflags __attribute__((unused)),
-    struct FTW* pftw __attribute__((unused)))
-{
-    restorecon_sb(filename, statptr, true);
-    return 0;
-}
-
-int selinux_android_restorecon_recursive(const char* pathname)
-{
-    int fd_limit = 20;
-    int flags = FTW_DEPTH | FTW_MOUNT | FTW_PHYS;
+    FTS *fts;
+    FTSENT *ftsent;
+    char *const paths[2] = { __UNCONST(pathname), NULL };
+    int ftsflags = FTS_COMFOLLOW | FTS_NOCHDIR | FTS_XDEV | FTS_PHYSICAL;
+    int error, sverrno;
     char xattr_value[FC_DIGEST_SIZE];
     ssize_t size;
 
@@ -782,15 +769,72 @@ int selinux_android_restorecon_recursive(const char* pathname)
     if (!sehandle)
         return 0;
 
+    if (!recurse) {
+        if (lstat(pathname, &sb) < 0)
+            return -1;
+
+        return restorecon_sb(pathname, &sb, false, nochange, verbose);
+    }
+
     size = getxattr(pathname, RESTORECON_LAST, xattr_value, sizeof fc_digest);
-    if (size == sizeof fc_digest && memcmp(fc_digest, xattr_value, sizeof fc_digest) == 0) {
+    if (!force && size == sizeof fc_digest && memcmp(fc_digest, xattr_value, sizeof fc_digest) == 0) {
         selinux_log(SELINUX_INFO,
                     "SELinux: Skipping restorecon_recursive(%s)\n",
                     pathname);
         return 0;
     }
 
-    return nftw(pathname, nftw_restorecon, fd_limit, flags);
+    fts = fts_open(paths, ftsflags, NULL);
+    if (!fts)
+        return -1;
+
+    error = 0;
+    while ((ftsent = fts_read(fts)) != NULL) {
+        switch (ftsent->fts_info) {
+        case FTS_DC:
+            selinux_log(SELINUX_ERROR,
+                        "SELinux:  Directory cycle on %s.\n", ftsent->fts_path);
+            errno = ELOOP;
+            error = -1;
+            goto out;
+        case FTS_DP:
+            continue;
+        case FTS_DNR:
+            selinux_log(SELINUX_ERROR,
+                        "SELinux:  Could not read %s: %s.\n", ftsent->fts_path, strerror(errno));
+            fts_set(fts, ftsent, FTS_SKIP);
+            continue;
+        case FTS_NS:
+            selinux_log(SELINUX_ERROR,
+                        "SELinux:  Could not stat %s: %s.\n", ftsent->fts_path, strerror(errno));
+            fts_set(fts, ftsent, FTS_SKIP);
+            continue;
+        case FTS_ERR:
+            selinux_log(SELINUX_ERROR,
+                        "SELinux:  Error on %s: %s.\n", ftsent->fts_path, strerror(errno));
+            fts_set(fts, ftsent, FTS_SKIP);
+            continue;
+        default:
+            (void) restorecon_sb(ftsent->fts_path, ftsent->fts_statp, true, nochange, verbose);
+            break;
+        }
+    }
+
+out:
+    sverrno = errno;
+    (void) fts_close(fts);
+    error = sverrno;
+    return error;
+}
+
+int selinux_android_restorecon(const char* pathname)
+{
+    return selinux_android_restorecon_flags(pathname, 0);
+}
+
+int selinux_android_restorecon_recursive(const char* pathname)
+{
+    return selinux_android_restorecon_flags(pathname, SELINUX_ANDROID_RESTORECON_RECURSE);
 }
 
 struct selabel_handle* selinux_android_file_context_handle(void)
