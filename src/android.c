@@ -713,11 +713,11 @@ static int restorecon_sb(const char *pathname, const struct stat *sb, bool setre
     int i;
 
     if (selabel_lookup(sehandle, &secontext, pathname, sb->st_mode) < 0)
-        return -errno;
+        return -1;
 
     if (lgetfilecon(pathname, &oldsecontext) < 0) {
         freecon(secontext);
-        return -errno;
+        return -1;
     }
 
     if (strcmp(oldsecontext, secontext) != 0) {
@@ -727,7 +727,7 @@ static int restorecon_sb(const char *pathname, const struct stat *sb, bool setre
                         pathname, secontext, strerror(errno));
             freecon(oldsecontext);
             freecon(secontext);
-            return -errno;
+            return -1;
         }
     }
     freecon(oldsecontext);
@@ -754,7 +754,7 @@ int selinux_android_restorecon(const char *pathname)
         return 0;
 
     if (lstat(pathname, &sb) < 0)
-        return -errno;
+        return -1;
 
     return restorecon_sb(pathname, &sb, false);
 }
