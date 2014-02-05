@@ -363,6 +363,8 @@ static int seapp_context_lookup(enum seapp_kind kind,
 	uid_t userid;
 	uid_t appid;
 
+	__selinux_once(once, seapp_context_init);
+
 	userid = uid / AID_USER;
 	appid = uid % AID_USER;
 	if (appid < AID_APP) {
@@ -509,8 +511,6 @@ int selinux_android_setfilecon2(const char *pkgdir,
 	if (is_selinux_enabled() <= 0)
 		return 0;
 
-	__selinux_once(once, seapp_context_init);
-
 	rc = getfilecon(pkgdir, &ctx_str);
 	if (rc < 0)
 		goto err;
@@ -575,8 +575,6 @@ int selinux_android_setcontext(uid_t uid,
 	if (is_selinux_enabled() <= 0)
 		return 0;
 
-	__selinux_once(once, seapp_context_init);
-	
 	rc = getcon(&ctx_str);
 	if (rc)
 		goto err;
@@ -706,20 +704,246 @@ static void file_context_init(void)
 
 static pthread_once_t fc_once = PTHREAD_ONCE_INIT;
 
+struct pkgInfo {
+    char *name;
+    uid_t uid;
+    bool debuggable;
+    char *dataDir;
+    char *seinfo;
+    struct pkgInfo *next;
+};
+
+#define PKGTAB_SIZE 256
+static struct pkgInfo *pkgTab[PKGTAB_SIZE];
+
+static unsigned int pkghash(const char *pkgname)
+{
+    unsigned int h = 7;
+    for (; *pkgname; pkgname++) {
+        h = h * 31 + *pkgname;
+    }
+    return h & (PKGTAB_SIZE - 1);
+}
+
+/* The file containing the list of installed packages on the system */
+#define PACKAGES_LIST_FILE  "/data/system/packages.list"
+
+static void package_info_init(void)
+{
+    char *buf = NULL;
+    size_t buflen = 0;
+    ssize_t bytesread;
+    FILE *fp;
+    char *cur, *next;
+    struct pkgInfo *pkgInfo = NULL;
+    unsigned int hash;
+    unsigned long lineno = 1;
+
+    fp = fopen(PACKAGES_LIST_FILE, "r");
+    if (!fp) {
+        selinux_log(SELINUX_ERROR, "SELinux:  Could not open %s:  %s.\n",
+                    PACKAGES_LIST_FILE, strerror(errno));
+        return;
+    }
+    while ((bytesread = getline(&buf, &buflen, fp)) > 0) {
+        pkgInfo = calloc(1, sizeof(*pkgInfo));
+        if (!pkgInfo)
+            goto err;
+        next = buf;
+        cur = strsep(&next, " \t\n");
+        if (!cur)
+            goto err;
+        pkgInfo->name = strdup(cur);
+        if (!pkgInfo->name)
+            goto err;
+        cur = strsep(&next, " \t\n");
+        if (!cur)
+            goto err;
+        pkgInfo->uid = atoi(cur);
+        if (!pkgInfo->uid)
+            goto err;
+        cur = strsep(&next, " \t\n");
+        if (!cur)
+            goto err;
+        pkgInfo->debuggable = atoi(cur);
+        cur = strsep(&next, " \t\n");
+        if (!cur)
+            goto err;
+        pkgInfo->dataDir = strdup(cur);
+        if (!pkgInfo->dataDir)
+            goto err;
+        cur = strsep(&next, " \t\n");
+        if (!cur)
+            goto err;
+        pkgInfo->seinfo = strdup(cur);
+        if (!pkgInfo->seinfo)
+            goto err;
+
+        hash = pkghash(pkgInfo->name);
+        if (pkgTab[hash])
+            pkgInfo->next = pkgTab[hash];
+        pkgTab[hash] = pkgInfo;
+
+        lineno++;
+    }
+
+#if DEBUG
+    {
+        unsigned int buckets, entries, chainlen, longestchain;
+
+        buckets = entries = longestchain = 0;
+        for (hash = 0; hash < PKGTAB_SIZE; hash++) {
+            if (pkgTab[hash]) {
+                buckets++;
+                chainlen = 0;
+                for (pkgInfo = pkgTab[hash]; pkgInfo; pkgInfo = pkgInfo->next) {
+                    chainlen++;
+                    selinux_log(SELINUX_INFO, "%s:  name=%s uid=%u debuggable=%s dataDir=%s seinfo=%s\n",
+                                __FUNCTION__,
+                                pkgInfo->name, pkgInfo->uid, pkgInfo->debuggable ? "true" : "false", pkgInfo->dataDir, pkgInfo->seinfo);
+                }
+                entries += chainlen;
+                if (longestchain < chainlen)
+                    longestchain = chainlen;
+            }
+        }
+        selinux_log(SELINUX_INFO, "SELinux:  %d pkg entries and %d/%d buckets used, longest chain %d\n", entries, buckets, PKGTAB_SIZE, longestchain);
+    }
+#endif
+
+out:
+    free(buf);
+    fclose(fp);
+    return;
+
+err:
+    selinux_log(SELINUX_ERROR, "SELinux:  Error reading %s on line %lu.\n",
+                PACKAGES_LIST_FILE, lineno);
+    if (pkgInfo) {
+        free(pkgInfo->name);
+        free(pkgInfo->dataDir);
+        free(pkgInfo->seinfo);
+        free(pkgInfo);
+    }
+    goto out;
+}
+
+static pthread_once_t pkg_once = PTHREAD_ONCE_INIT;
+
+struct pkgInfo *package_info_lookup(const char *name)
+{
+    struct pkgInfo *pkgInfo;
+    unsigned int hash;
+
+    __selinux_once(pkg_once, package_info_init);
+
+    hash = pkghash(name);
+    for (pkgInfo = pkgTab[hash]; pkgInfo; pkgInfo = pkgInfo->next) {
+        if (!strcmp(name, pkgInfo->name))
+            return pkgInfo;
+    }
+    return NULL;
+}
+
+/* The path prefixes of package data directories. */
+#define DATA_DATA_PREFIX "/data/data/"
+#define DATA_USER_PREFIX "/data/user/"
+
+static int pkgdir_selabel_lookup(const char *pathname, char **secontextp)
+{
+    char *pkgname = NULL, *end = NULL;
+    struct pkgInfo *pkgInfo = NULL;
+    char *secontext = *secontextp;
+    context_t ctx = NULL;
+    int rc = 0;
+
+    /* Skip directory prefix before package name. */
+    if (!strncmp(pathname, DATA_DATA_PREFIX, sizeof(DATA_DATA_PREFIX)-1)) {
+        pathname += sizeof(DATA_DATA_PREFIX) - 1;
+    } else if (!strncmp(pathname, DATA_USER_PREFIX, sizeof(DATA_USER_PREFIX)-1)) {
+        pathname += sizeof(DATA_USER_PREFIX) - 1;
+        while (isdigit(*pathname))
+            pathname++;
+        if (*pathname == '/')
+            pathname++;
+        else
+            return 0;
+    } else
+        return 0;
+
+    if (!(*pathname))
+        return 0;
+
+    pkgname = strdup(pathname);
+    if (!pkgname)
+        return -1;
+
+    for (end = pkgname; *end && *end != '/'; end++)
+        ;
+    *end = '\0';
+
+    pkgInfo = package_info_lookup(pkgname);
+    if (!pkgInfo) {
+        free(pkgname);
+        return 0;
+    }
+
+    ctx = context_new(secontext);
+    if (!ctx)
+        goto err;
+
+    rc = seapp_context_lookup(SEAPP_TYPE, pkgInfo->uid, 0,
+                              pkgInfo->seinfo, pkgInfo->name, ctx);
+    if (rc < 0)
+        goto err;
+
+    secontext = context_str(ctx);
+    if (!secontext)
+        goto err;
+
+    if (!strcmp(secontext, *secontextp))
+        goto out;
+
+    rc = security_check_context(secontext);
+    if (rc < 0)
+        goto err;
+
+    freecon(*secontextp);
+    *secontextp = strdup(secontext);
+    if (!(*secontextp))
+        goto err;
+
+    rc = 0;
+
+out:
+    free(pkgname);
+    context_free(ctx);
+    return rc;
+err:
+    selinux_log(SELINUX_ERROR, "%s:  Error looking up context for path %s, pkgname %s, seinfo %s, uid %u: %s\n",
+                __FUNCTION__, pathname, pkgname, pkgInfo->seinfo, pkgInfo->uid, strerror(errno));
+    rc = -1;
+    goto out;
+}
+
 #define RESTORECON_LAST "security.restorecon_last"
 
 static int restorecon_sb(const char *pathname, const struct stat *sb, bool setrestoreconlast, bool nochange, bool verbose)
 {
     char *secontext = NULL;
     char *oldsecontext = NULL;
-    int i;
+    int rc = 0;
 
     if (selabel_lookup(sehandle, &secontext, pathname, sb->st_mode) < 0)
         return -1;
 
-    if (lgetfilecon(pathname, &oldsecontext) < 0) {
-        freecon(secontext);
-        return -1;
+    if (lgetfilecon(pathname, &oldsecontext) < 0)
+        goto err;
+
+    if (!strncmp(pathname, DATA_DATA_PREFIX, sizeof(DATA_DATA_PREFIX)-1) ||
+        !strncmp(pathname, DATA_USER_PREFIX, sizeof(DATA_USER_PREFIX)-1)) {
+        if (pkgdir_selabel_lookup(pathname, &secontext) < 0)
+            goto err;
     }
 
     if (strcmp(oldsecontext, secontext) != 0) {
@@ -727,23 +951,27 @@ static int restorecon_sb(const char *pathname, const struct stat *sb, bool setre
             selinux_log(SELINUX_INFO,
                         "SELinux:  Relabeling %s from %s to %s.\n", pathname, oldsecontext, secontext);
         if (!nochange) {
-            if (lsetfilecon(pathname, secontext) < 0) {
-                selinux_log(SELINUX_ERROR,
-                            "SELinux: Could not set context for %s to %s:  %s\n",
-                            pathname, secontext, strerror(errno));
-                freecon(oldsecontext);
-                freecon(secontext);
-                return -1;
-            }
+            if (lsetfilecon(pathname, secontext) < 0)
+                goto err;
         }
     }
-    freecon(oldsecontext);
-    freecon(secontext);
 
     if (setrestoreconlast && !nochange && S_ISDIR(sb->st_mode))
         setxattr(pathname, RESTORECON_LAST, fc_digest, sizeof fc_digest, 0);
 
-    return 0;
+    rc = 0;
+
+out:
+    freecon(oldsecontext);
+    freecon(secontext);
+    return rc;
+
+err:
+    selinux_log(SELINUX_ERROR,
+                "SELinux: Could not set context for %s:  %s\n",
+                pathname, strerror(errno));
+    rc = -1;
+    goto out;
 }
 
 int selinux_android_restorecon_flags(const char* pathname, unsigned int flags)
