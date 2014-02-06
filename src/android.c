@@ -1055,16 +1055,6 @@ out:
     return error;
 }
 
-int selinux_android_restorecon(const char* pathname)
-{
-    return selinux_android_restorecon_flags(pathname, 0);
-}
-
-int selinux_android_restorecon_recursive(const char* pathname)
-{
-    return selinux_android_restorecon_flags(pathname, SELINUX_ANDROID_RESTORECON_RECURSE);
-}
-
 struct selabel_handle* selinux_android_file_context_handle(void)
 {
     return file_context_open();
