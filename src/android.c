@@ -498,7 +498,7 @@ oom:
 	return -2;
 }
 
-int selinux_android_setfilecon2(const char *pkgdir,
+int selinux_android_setfilecon(const char *pkgdir,
 				const char *pkgname,
 				const char *seinfo,
 				uid_t uid)
@@ -554,13 +554,6 @@ oom:
 	selinux_log(SELINUX_ERROR, "%s:  Out of memory\n", __FUNCTION__);
 	rc = -1;
 	goto out;
-}
-
-int selinux_android_setfilecon(const char *pkgdir,
-			       const char *pkgname,
-			       uid_t uid)
-{
-	return selinux_android_setfilecon2(pkgdir, pkgname, NULL, uid);
 }
 
 int selinux_android_setcontext(uid_t uid,
@@ -974,7 +967,7 @@ err:
     goto out;
 }
 
-int selinux_android_restorecon_flags(const char* pathname, unsigned int flags)
+int selinux_android_restorecon(const char* pathname, unsigned int flags)
 {
     bool nochange = (flags & SELINUX_ANDROID_RESTORECON_NOCHANGE) ? true : false;
     bool verbose = (flags & SELINUX_ANDROID_RESTORECON_VERBOSE) ? true : false;
