@@ -203,12 +203,12 @@ extern int security_get_initial_context(const char *name,
 
 /* Translate boolean strict to name value pair. */
 typedef struct {
-	char *name;
+	const char *name;
 	int value;
 } SELboolean;
 /* save a list of booleans in a single transaction.  */
 extern int security_set_boolean_list(size_t boolcnt,
-				     SELboolean * boollist, int permanent);
+				     SELboolean * const boollist, int permanent);
 
 /* Check the validity of a security context. */
 extern int security_check_context(const security_context_t con);
