@@ -242,7 +242,7 @@ static void rollback(SELboolean * boollist, int end)
 								 name));
 }
 
-int security_set_boolean_list(size_t boolcnt, SELboolean * boollist,
+int security_set_boolean_list(size_t boolcnt, SELboolean * const boollist,
 			      int permanent __attribute__((unused)))
 {
 
