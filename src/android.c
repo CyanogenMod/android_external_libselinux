@@ -839,8 +839,10 @@ struct pkgInfo *package_info_lookup(const char *name)
 }
 
 /* The path prefixes of package data directories. */
-#define DATA_DATA_PREFIX "/data/data/"
-#define DATA_USER_PREFIX "/data/user/"
+#define DATA_DATA_PATH "/data/data"
+#define DATA_USER_PATH "/data/user"
+#define DATA_DATA_PREFIX DATA_DATA_PATH "/"
+#define DATA_USER_PREFIX DATA_USER_PATH "/"
 
 static int pkgdir_selabel_lookup(const char *pathname, char **secontextp)
 {
@@ -973,6 +975,7 @@ int selinux_android_restorecon(const char* pathname, unsigned int flags)
     bool verbose = (flags & SELINUX_ANDROID_RESTORECON_VERBOSE) ? true : false;
     bool recurse = (flags & SELINUX_ANDROID_RESTORECON_RECURSE) ? true : false;
     bool force = (flags & SELINUX_ANDROID_RESTORECON_FORCE) ? true : false;
+    bool datadata = (flags & SELINUX_ANDROID_RESTORECON_DATADATA) ? true : false;
     struct stat sb;
     FTS *fts;
     FTSENT *ftsent;
@@ -1035,6 +1038,14 @@ int selinux_android_restorecon(const char* pathname, unsigned int flags)
                         "SELinux:  Error on %s: %s.\n", ftsent->fts_path, strerror(errno));
             fts_set(fts, ftsent, FTS_SKIP);
             continue;
+        case FTS_D:
+            if (!datadata &&
+                (!strcmp(ftsent->fts_path, DATA_DATA_PATH) ||
+                 !strcmp(ftsent->fts_path, DATA_USER_PATH))) {
+                fts_set(fts, ftsent, FTS_SKIP);
+                continue;
+            }
+            /* fall through */
         default:
             (void) restorecon_sb(ftsent->fts_path, ftsent->fts_statp, true, nochange, verbose);
             break;
