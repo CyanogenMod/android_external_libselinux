@@ -75,6 +75,7 @@ struct seapp_context {
 	struct prefix_str user;
 	char *seinfo;
 	struct prefix_str name;
+	struct prefix_str path;
 	/* outputs */
 	char *domain;
 	char *type;
@@ -131,6 +132,22 @@ static int seapp_context_cmp(const void *A, const void *B)
 			return (s1->name.len > s2->name.len) ? -1 : 1;
 	}
 
+	/* Give precedence to a specified path= over an unspecified path=. */
+	if (s1->path.str && !s2->path.str)
+		return -1;
+	if (!s1->path.str && s2->path.str)
+		return 1;
+
+	if (s1->path.str) {
+		/* Give precedence to a fixed path= string over a prefix. */
+		if (s1->path.is_prefix != s2->path.is_prefix)
+			return (s2->path.is_prefix ? -1 : 1);
+
+		/* Give precedence to a longer prefix over a shorter prefix. */
+		if (s1->path.is_prefix && s1->path.len != s2->path.len)
+			return (s1->path.len > s2->path.len) ? -1 : 1;
+	}
+
         /* Give precedence to a specified sebool= over an unspecified sebool=. */
         if (s1->sebool && !s2->sebool)
                 return -1;
@@ -169,6 +186,7 @@ int selinux_android_seapp_context_reload(void)
 			free(cur->user.str);
 			free(cur->seinfo);
 			free(cur->name.str);
+			free(cur->path.str);
 			free(cur->domain);
 			free(cur->type);
 			free(cur->level);
@@ -277,6 +295,13 @@ int selinux_android_seapp_context_reload(void)
 				cur->level = strdup(value);
 				if (!cur->level)
 					goto oom;
+			} else if (!strcasecmp(name, "path")) {
+				cur->path.str = strdup(value);
+				if (!cur->path.str)
+					goto oom;
+				cur->path.len = strlen(cur->path.str);
+				if (cur->path.str[cur->path.len-1] == '*')
+					cur->path.is_prefix = 1;
 			} else if (!strcasecmp(name, "sebool")) {
 				cur->sebool = strdup(value);
 				if (!cur->sebool)
@@ -302,10 +327,10 @@ int selinux_android_seapp_context_reload(void)
 		int i;
 		for (i = 0; i < nspec; i++) {
 			cur = seapp_contexts[i];
-			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s user=%s seinfo=%s name=%s sebool=%s -> domain=%s type=%s level=%s levelFrom=%s",
+			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s user=%s seinfo=%s name=%s path=%s sebool=%s -> domain=%s type=%s level=%s levelFrom=%s",
 			__FUNCTION__,
 			cur->isSystemServer ? "true" : "false", cur->user.str,
-			cur->seinfo, cur->name.str, cur->sebool, cur->domain,
+			cur->seinfo, cur->name.str, cur->path.str, cur->sebool, cur->domain,
 			cur->type, cur->level,
 			levelFromName[cur->levelFrom]);
 		}
@@ -354,6 +379,7 @@ static int seapp_context_lookup(enum seapp_kind kind,
 				int isSystemServer,
 				const char *seinfo,
 				const char *pkgname,
+				const char *path,
 				context_t ctx)
 {
 	const char *username = NULL;
@@ -417,6 +443,19 @@ static int seapp_context_lookup(enum seapp_kind kind,
 					continue;
 			} else {
 				if (strcasecmp(pkgname, cur->name.str))
+					continue;
+			}
+		}
+
+		if (cur->path.str) {
+			if (!path)
+				continue;
+
+			if (cur->path.is_prefix) {
+				if (strncmp(path, cur->path.str, cur->path.len-1))
+					continue;
+			} else {
+				if (strcmp(path, cur->path.str))
 					continue;
 			}
 		}
@@ -520,7 +559,7 @@ int selinux_android_setfilecon(const char *pkgdir,
 	if (!ctx)
 		goto oom;
 
-	rc = seapp_context_lookup(SEAPP_TYPE, uid, 0, seinfo, pkgname, ctx);
+	rc = seapp_context_lookup(SEAPP_TYPE, uid, 0, seinfo, pkgname, NULL, ctx);
 	if (rc == -1)
 		goto err;
 	else if (rc == -2)
@@ -577,7 +616,7 @@ int selinux_android_setcontext(uid_t uid,
 	if (!ctx)
 		goto oom;
 
-	rc = seapp_context_lookup(SEAPP_DOMAIN, uid, isSystemServer, seinfo, pkgname, ctx);
+	rc = seapp_context_lookup(SEAPP_DOMAIN, uid, isSystemServer, seinfo, pkgname, NULL, ctx);
 	if (rc == -1)
 		goto err;
 	else if (rc == -2)
@@ -875,6 +914,9 @@ static int pkgdir_selabel_lookup(const char *pathname, char **secontextp)
 
     for (end = pkgname; *end && *end != '/'; end++)
         ;
+    pathname = end;
+    if (*end)
+        pathname++;
     *end = '\0';
 
     pkgInfo = package_info_lookup(pkgname);
@@ -888,7 +930,7 @@ static int pkgdir_selabel_lookup(const char *pathname, char **secontextp)
         goto err;
 
     rc = seapp_context_lookup(SEAPP_TYPE, pkgInfo->uid, 0,
-                              pkgInfo->seinfo, pkgInfo->name, ctx);
+                              pkgInfo->seinfo, pkgInfo->name, pathname, ctx);
     if (rc < 0)
         goto err;
 
