@@ -32,7 +32,7 @@ default_selinux_audit(void *ptr __attribute__((unused)),
 }
 
 static int
-default_selinux_validate(security_context_t *ctx)
+default_selinux_validate(char **ctx)
 {
 	return security_check_context(*ctx);
 }
@@ -59,7 +59,7 @@ int
 	default_selinux_audit;
 
 int
-(*selinux_validate)(security_context_t *ctx) =
+(*selinux_validate)(char **ctx) =
 	default_selinux_validate;
 
 int

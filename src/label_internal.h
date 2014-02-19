@@ -39,8 +39,8 @@ struct selabel_sub {
 };
 
 struct selabel_lookup_rec {
-	security_context_t ctx_raw;
-	security_context_t ctx_trans;
+	char * ctx_raw;
+	char * ctx_trans;
 	int validated;
 };
 

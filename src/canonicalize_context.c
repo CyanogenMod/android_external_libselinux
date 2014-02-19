@@ -9,8 +9,8 @@
 #include "policy.h"
 #include <limits.h>
 
-int security_canonicalize_context(const security_context_t con,
-				      security_context_t * canoncon)
+int security_canonicalize_context(const char * con,
+				      char ** canoncon)
 {
 	char path[PATH_MAX];
 	char *buf;

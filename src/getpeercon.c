@@ -11,7 +11,7 @@
 #define SO_PEERSEC 31
 #endif
 
-int getpeercon(int fd, security_context_t * context)
+int getpeercon(int fd, char ** context)
 {
 	char *buf;
 	socklen_t size;

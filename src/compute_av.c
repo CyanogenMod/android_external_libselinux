@@ -10,8 +10,8 @@
 #include "policy.h"
 #include "mapping.h"
 
-int security_compute_av(const security_context_t scon,
-			const security_context_t tcon,
+int security_compute_av(const char * scon,
+			const char * tcon,
 			security_class_t tclass,
 			access_vector_t requested,
 			struct av_decision *avd)
