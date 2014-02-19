@@ -7,7 +7,7 @@
 #include <sys/xattr.h>
 #include "policy.h"
 
-int getfilecon(const char *path, security_context_t * context)
+int getfilecon(const char *path, char ** context)
 {
 	char *buf;
 	ssize_t size;

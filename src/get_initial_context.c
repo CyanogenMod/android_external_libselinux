@@ -11,7 +11,7 @@
 
 #define SELINUX_INITCON_DIR "/initial_contexts/"
 
-int security_get_initial_context(const char * name, security_context_t * con)
+int security_get_initial_context(const char * name, char ** con)
 {
 	char path[PATH_MAX];
 	char *buf;

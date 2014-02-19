@@ -7,7 +7,7 @@
 #include "selinux_internal.h"
 #include "policy.h"
 
-int lgetfilecon(const char *path, security_context_t * context)
+int lgetfilecon(const char *path, char ** context)
 {
 	char *buf;
 	ssize_t size;

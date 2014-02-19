@@ -10,10 +10,10 @@
 #include "policy.h"
 #include "mapping.h"
 
-int security_compute_create(const security_context_t scon,
-				const security_context_t tcon,
+int security_compute_create(const char * scon,
+				const char * tcon,
 				security_class_t tclass,
-				security_context_t * newcon)
+				char ** newcon)
 {
 	char path[PATH_MAX];
 	char *buf;
