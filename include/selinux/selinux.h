@@ -13,19 +13,20 @@ extern int is_selinux_enabled(void);
 /* Return 1 if we are running on a SELinux MLS kernel, or 0 otherwise. */
 extern int is_selinux_mls_enabled(void);
 
+/* No longer used; here for compatibility with legacy callers. */
 typedef char *security_context_t;
 
 /* Free the memory allocated for a context by any of the below get* calls. */
-extern void freecon(security_context_t con);
+extern void freecon(char * con);
 
 /* Free the memory allocated for a context array by security_compute_user. */
-extern void freeconary(security_context_t * con);
+extern void freeconary(char ** con);
 
 /* Wrappers for the /proc/pid/attr API. */
 
 /* Get current context, and set *con to refer to it.
    Caller must free via freecon. */
-extern int getcon(security_context_t * con);
+extern int getcon(char ** con);
 
 /* Set the current security context to con.  
    Note that use of this function requires that the entire application
@@ -35,70 +36,70 @@ extern int getcon(security_context_t * con);
    instead. Note that the application may lose access to its open descriptors
    as a result of a setcon() unless policy allows it to use descriptors opened
    by the old context. */
-extern int setcon(const security_context_t con);
+extern int setcon(const char * con);
 
 /* Get context of process identified by pid, and 
    set *con to refer to it.  Caller must free via freecon. */
-extern int getpidcon(pid_t pid, security_context_t * con);
+extern int getpidcon(pid_t pid, char ** con);
 
 /* Get previous context (prior to last exec), and set *con to refer to it.
    Caller must free via freecon. */
-extern int getprevcon(security_context_t * con);
+extern int getprevcon(char ** con);
 
 /* Get exec context, and set *con to refer to it.
    Sets *con to NULL if no exec context has been set, i.e. using default.
    If non-NULL, caller must free via freecon. */
-extern int getexeccon(security_context_t * con);
+extern int getexeccon(char ** con);
 
 /* Set exec security context for the next execve. 
    Call with NULL if you want to reset to the default. */
-extern int setexeccon(const security_context_t con);
+extern int setexeccon(const char * con);
 
 /* Get fscreate context, and set *con to refer to it.
    Sets *con to NULL if no fs create context has been set, i.e. using default.
    If non-NULL, caller must free via freecon. */
-extern int getfscreatecon(security_context_t * con);
+extern int getfscreatecon(char ** con);
 
 /* Set the fscreate security context for subsequent file creations.
    Call with NULL if you want to reset to the default. */
-extern int setfscreatecon(const security_context_t context);
+extern int setfscreatecon(const char * context);
 
 /* Get keycreate context, and set *con to refer to it.
    Sets *con to NULL if no key create context has been set, i.e. using default.
    If non-NULL, caller must free via freecon. */
-extern int getkeycreatecon(security_context_t * con);
+extern int getkeycreatecon(char ** con);
 
 /* Set the keycreate security context for subsequent key creations.
    Call with NULL if you want to reset to the default. */
-extern int setkeycreatecon(const security_context_t context);
+extern int setkeycreatecon(const char * context);
 
 /* Get sockcreate context, and set *con to refer to it.
    Sets *con to NULL if no socket create context has been set, i.e. using default.
    If non-NULL, caller must free via freecon. */
-extern int getsockcreatecon(security_context_t * con);
+extern int getsockcreatecon(char ** con);
 
 /* Set the sockcreate security context for subsequent socket creations.
    Call with NULL if you want to reset to the default. */
-extern int setsockcreatecon(const security_context_t context);
+extern int setsockcreatecon(const char * context);
 
 /* Wrappers for the xattr API. */
 
 /* Get file context, and set *con to refer to it.
    Caller must free via freecon. */
-extern int getfilecon(const char *path, security_context_t * con);
-extern int lgetfilecon(const char *path, security_context_t * con);
-extern int fgetfilecon(int fd, security_context_t * con);
+extern int getfilecon(const char *path, char ** con);
+extern int lgetfilecon(const char *path, char ** con);
+extern int fgetfilecon(int fd, char ** con);
 
 /* Set file context */
-extern int setfilecon(const char *path, security_context_t con);
-extern int lsetfilecon(const char *path, security_context_t con);
-extern int fsetfilecon(int fd, security_context_t con);
+extern int setfilecon(const char *path, const char *con);
+extern int lsetfilecon(const char *path, const char *con);
+extern int fsetfilecon(int fd, const char *con);
 
 /* Wrappers for the socket API */
 
 /* Get context of peer socket, and set *con to refer to it.
    Caller must free via freecon. */
-extern int getpeercon(int fd, security_context_t * con);
+extern int getpeercon(int fd, char ** con);
 
 /* Wrappers for the selinuxfs (policy) API. */
 
@@ -137,7 +138,7 @@ __attribute__ ((format(printf, 2, 3)))
 	int (*func_audit) (void *auditdata, security_class_t cls,
 			   char *msgbuf, size_t msgbufsize);
 	/* validate the supplied context, modifying if necessary */
-	int (*func_validate) (security_context_t *ctx);
+	int (*func_validate) (char **ctx);
 	/* netlink callback for setenforce message */
 	int (*func_setenforce) (int enforcing);
 	/* netlink callback for policyload message */
@@ -160,38 +161,38 @@ extern void selinux_set_callback(int type, union selinux_callback cb);
 #define SELINUX_AVC		3
 
 /* Compute an access decision. */
-extern int security_compute_av(const security_context_t scon,
-			       const security_context_t tcon,
+extern int security_compute_av(const char * scon,
+			       const char * tcon,
 			       security_class_t tclass,
 			       access_vector_t requested,
 			       struct av_decision *avd);
 
 /* Compute a labeling decision and set *newcon to refer to it.
    Caller must free via freecon. */
-extern int security_compute_create(const security_context_t scon,
-				   const security_context_t tcon,
+extern int security_compute_create(const char * scon,
+				   const char * tcon,
 				   security_class_t tclass,
-				   security_context_t * newcon);
+				   char ** newcon);
 
 /* Compute a relabeling decision and set *newcon to refer to it.
    Caller must free via freecon. */
-extern int security_compute_relabel(const security_context_t scon,
-				    const security_context_t tcon,
+extern int security_compute_relabel(const char * scon,
+				    const char * tcon,
 				    security_class_t tclass,
-				    security_context_t * newcon);
+				    char ** newcon);
 
 /* Compute a polyinstantiation member decision and set *newcon to refer to it.
    Caller must free via freecon. */
-extern int security_compute_member(const security_context_t scon,
-				   const security_context_t tcon,
+extern int security_compute_member(const char * scon,
+				   const char * tcon,
 				   security_class_t tclass,
-				   security_context_t * newcon);
+				   char ** newcon);
 
 /* Compute the set of reachable user contexts and set *con to refer to 
    the NULL-terminated array of contexts.  Caller must free via freeconary. */
-extern int security_compute_user(const security_context_t scon,
+extern int security_compute_user(const char * scon,
 				 const char *username,
-				 security_context_t ** con);
+				 char *** con);
 
 /* Load a policy configuration. */
 extern int security_load_policy(void *data, size_t len);
@@ -199,7 +200,7 @@ extern int security_load_policy(void *data, size_t len);
 /* Get the context of an initial kernel security identifier by name.  
    Caller must free via freecon */
 extern int security_get_initial_context(const char *name,
-					security_context_t * con);
+					char ** con);
 
 /* Translate boolean strict to name value pair. */
 typedef struct {
@@ -211,11 +212,11 @@ extern int security_set_boolean_list(size_t boolcnt,
 				     SELboolean * const boollist, int permanent);
 
 /* Check the validity of a security context. */
-extern int security_check_context(const security_context_t con);
+extern int security_check_context(const char * con);
 
 /* Canonicalize a security context. */
-extern int security_canonicalize_context(const security_context_t con,
-					 security_context_t * canoncon);
+extern int security_canonicalize_context(const char * con,
+					 char ** canoncon);
 
 /* Get the enforce flag value. */
 extern int security_getenforce(void);
@@ -273,8 +274,8 @@ extern int security_av_string(security_class_t tclass,
 			      access_vector_t av, char **result);
 
 /* Check permissions and perform appropriate auditing. */
-extern int selinux_check_access(const security_context_t scon,
-				const security_context_t tcon,
+extern int selinux_check_access(const char * scon,
+				const char * tcon,
 				const char *tclass,
 				const char *perm, void *aux);
 

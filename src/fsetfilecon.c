@@ -7,7 +7,7 @@
 #include "selinux_internal.h"
 #include "policy.h"
 
-int fsetfilecon(int fd, const security_context_t context)
+int fsetfilecon(int fd, const char *context)
 {
 	return fsetxattr(fd, XATTR_NAME_SELINUX, context, strlen(context) + 1,
 			 0);

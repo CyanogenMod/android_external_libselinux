@@ -106,7 +106,7 @@ selabel_lookup_common(struct selabel_handle *rec,
 	return lr;
 }
 
-int selabel_lookup(struct selabel_handle *rec, security_context_t *con,
+int selabel_lookup(struct selabel_handle *rec, char **con,
 		   const char *key, int type)
 {
 	struct selabel_lookup_rec *lr;
