@@ -977,8 +977,20 @@ static int restorecon_sb(const char *pathname, const struct stat *sb, bool setre
     if (lgetfilecon(pathname, &oldsecontext) < 0)
         goto err;
 
+    /*
+     * Disable setting restorecon_last on /data/data or /data/user
+     * since their labeling is based on seapp_contexts and seinfo
+     * assignments rather than file_contexts and is managed by
+     * installd rather than init.
+     */
+    if (!strcmp(pathname, DATA_DATA_PATH) || !strcmp(pathname, DATA_USER_PATH))
+        setrestoreconlast = false;
+
     if (!strncmp(pathname, DATA_DATA_PREFIX, sizeof(DATA_DATA_PREFIX)-1) ||
         !strncmp(pathname, DATA_USER_PREFIX, sizeof(DATA_USER_PREFIX)-1)) {
+        /* Same as above for all children of /data/data and /data/user. */
+        setrestoreconlast = false;
+
         if (pkgdir_selabel_lookup(pathname, &secontext) < 0)
             goto err;
     }
@@ -1041,6 +1053,15 @@ int selinux_android_restorecon(const char* pathname, unsigned int flags)
 
         return restorecon_sb(pathname, &sb, false, nochange, verbose);
     }
+
+    /*
+     * Ignore restorecon_last on /data/data or /data/user
+     * since their labeling is based on seapp_contexts and seinfo
+     * assignments rather than file_contexts and is managed by
+     * installd rather than init.
+     */
+    if (!strcmp(pathname, DATA_DATA_PATH) || !strcmp(pathname, DATA_USER_PATH))
+        force = true;
 
     size = getxattr(pathname, RESTORECON_LAST, xattr_value, sizeof fc_digest);
     if (!force && size == sizeof fc_digest && memcmp(fc_digest, xattr_value, sizeof fc_digest) == 0) {
