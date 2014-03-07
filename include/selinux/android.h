@@ -38,9 +38,9 @@ extern int selinux_android_setfilecon2(const char *pkgdir,
 #define SELINUX_ANDROID_RESTORECON_FORCE    8
 extern int selinux_android_restorecon_flags(const char *file, unsigned int flags);
 
-extern int selinux_android_restorecon(const char *file);
-
-extern int selinux_android_restorecon_recursive(const char *file);
+#define selinux_android_restorecon(file,flags) selinux_android_restorecon_flags(file, flags)
+#define selinux_android_restorecon(f) selinux_android_restorecon_flags(f, 0)
+#define selinux_android_restorecon_recursive(f) selinux_android_restorecon_flags(f, SELINUX_ANDROID_RESTORECON_RECURSE)
 
 extern int selinux_android_seapp_context_reload(void);
 
