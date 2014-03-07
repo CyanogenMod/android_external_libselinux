@@ -9,7 +9,7 @@
 #include "policy.h"
 #include <limits.h>
 
-int security_check_context(const security_context_t con)
+int security_check_context(const char * con)
 {
 	char path[PATH_MAX];
 	int fd, ret;
