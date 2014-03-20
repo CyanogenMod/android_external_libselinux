@@ -12,6 +12,8 @@ extern "C" {
 
 extern struct selabel_handle* selinux_android_file_context_handle(void);
 
+extern void selinux_android_set_sehandle(const struct selabel_handle *hndl);
+
 extern int selinux_android_load_policy(void);
 
 extern int selinux_android_reload_policy(void);
@@ -22,15 +24,16 @@ extern int selinux_android_setcontext(uid_t uid,
 				      const char *name);
 
 extern int selinux_android_setfilecon(const char *pkgdir,
-				      const char *pkgname,
-				      uid_t uid);
-
-extern int selinux_android_setfilecon2(const char *pkgdir,
 				       const char *pkgname,
 				       const char *seinfo,
 				       uid_t uid);
 
-extern int selinux_android_restorecon(const char *file);
+#define SELINUX_ANDROID_RESTORECON_NOCHANGE 1
+#define SELINUX_ANDROID_RESTORECON_VERBOSE  2
+#define SELINUX_ANDROID_RESTORECON_RECURSE  4
+#define SELINUX_ANDROID_RESTORECON_FORCE    8
+#define SELINUX_ANDROID_RESTORECON_DATADATA 16
+extern int selinux_android_restorecon(const char *file, unsigned int flags);
 
 extern int selinux_android_seapp_context_reload(void);
 

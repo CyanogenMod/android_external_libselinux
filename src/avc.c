@@ -66,7 +66,7 @@ static inline int avc_hash(security_id_t ssid,
 	    & (AVC_CACHE_SLOTS - 1);
 }
 
-int avc_context_to_sid(const security_context_t ctx, security_id_t * sid)
+int avc_context_to_sid(const char * ctx, security_id_t * sid)
 {
 	int rc;
 	avc_get_lock(avc_lock);
@@ -75,7 +75,7 @@ int avc_context_to_sid(const security_context_t ctx, security_id_t * sid)
 	return rc;
 }
 
-int avc_sid_to_context(security_id_t sid, security_context_t * ctx)
+int avc_sid_to_context(security_id_t sid, char ** ctx)
 {
 	int rc;
 	*ctx = NULL;
@@ -89,7 +89,7 @@ int avc_sid_to_context(security_id_t sid, security_context_t * ctx)
 int avc_get_initial_sid(const char * name, security_id_t * sid)
 {
 	int rc;
-	security_context_t con;
+	char * con;
 
 	rc = security_get_initial_context(name, &con);
 	if (rc < 0)
@@ -287,11 +287,7 @@ static inline struct avc_node *avc_reclaim_node(void)
 
 static inline void avc_clear_avc_entry(struct avc_entry *ae)
 {
-	ae->ssid = ae->tsid = ae->create_sid = NULL;
-	ae->tclass = 0;
-	ae->avd.allowed = ae->avd.decided = 0;
-	ae->avd.auditallow = ae->avd.auditdeny = 0;
-	ae->used = 0;
+	memset(ae, 0, sizeof *ae);
 }
 
 static inline struct avc_node *avc_claim_node(security_id_t ssid,
@@ -439,11 +435,7 @@ static int avc_insert(security_id_t ssid, security_id_t tsid,
 		goto out;
 	}
 
-	node->ae.avd.allowed = ae->avd.allowed;
-	node->ae.avd.decided = ae->avd.decided;
-	node->ae.avd.auditallow = ae->avd.auditallow;
-	node->ae.avd.auditdeny = ae->avd.auditdeny;
-	node->ae.avd.seqno = ae->avd.seqno;
+	memcpy(&node->ae.avd, &ae->avd, sizeof ae->avd);
 	aeref->ae = &node->ae;
       out:
 	return rc;
@@ -785,7 +777,7 @@ int avc_compute_create(security_id_t ssid,  security_id_t tsid,
 	int rc;
 	struct avc_entry_ref aeref;
 	struct avc_entry entry;
-	security_context_t ctx;
+	char * ctx;
 
 	*newsid = NULL;
 	avc_entry_ref_init(&aeref);

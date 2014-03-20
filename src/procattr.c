@@ -15,7 +15,7 @@ static pid_t gettid(void)
 }
 #endif
 
-static int getprocattrcon(security_context_t * context,
+static int getprocattrcon(char ** context,
 			  pid_t pid, const char *attr)
 {
 	char *path, *buf;
@@ -73,7 +73,7 @@ static int getprocattrcon(security_context_t * context,
 	return ret;
 }
 
-static int setprocattrcon(security_context_t context,
+static int setprocattrcon(const char * context,
 			  pid_t pid, const char *attr)
 {
 	char *path;
@@ -113,13 +113,13 @@ static int setprocattrcon(security_context_t context,
 }
 
 #define getselfattr_def(fn, attr) \
-	int get##fn(security_context_t *c) \
+	int get##fn(char **c) \
 	{ \
 		return getprocattrcon(c, 0, #attr); \
 	}
 
 #define setselfattr_def(fn, attr) \
-	int set##fn(const security_context_t c) \
+	int set##fn(const char * c) \
 	{ \
 		return setprocattrcon(c, 0, #attr); \
 	}
@@ -129,7 +129,7 @@ static int setprocattrcon(security_context_t context,
 	setselfattr_def(fn, attr)
 
 #define getpidattr_def(fn, attr) \
-	int get##fn(pid_t pid, security_context_t *c)	\
+	int get##fn(pid_t pid, char **c)	\
 	{ \
 		return getprocattrcon(c, pid, #attr); \
 	}
