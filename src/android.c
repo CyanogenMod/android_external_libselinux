@@ -880,7 +880,10 @@ struct pkgInfo *package_info_lookup(const char *name)
 #define DATA_DATA_PREFIX DATA_DATA_PATH "/"
 #define DATA_USER_PREFIX DATA_USER_PATH "/"
 
-static int pkgdir_selabel_lookup(const char *pathname, char **secontextp)
+static int pkgdir_selabel_lookup(const char *pathname,
+                                 const char *seinfo,
+                                 uid_t uid,
+                                 char **secontextp)
 {
     char *pkgname = NULL, *end = NULL;
     struct pkgInfo *pkgInfo = NULL;
@@ -916,18 +919,22 @@ static int pkgdir_selabel_lookup(const char *pathname, char **secontextp)
         pathname++;
     *end = '\0';
 
-    pkgInfo = package_info_lookup(pkgname);
-    if (!pkgInfo) {
-        free(pkgname);
-        return 0;
+    if (!seinfo) {
+        pkgInfo = package_info_lookup(pkgname);
+        if (!pkgInfo) {
+            selinux_log(SELINUX_WARNING, "SELinux:  Could not look up information for package %s, cannot restorecon %s.\n",
+                        pkgname, pathname);
+            free(pkgname);
+            return -1;
+        }
     }
 
     ctx = context_new(secontext);
     if (!ctx)
         goto err;
 
-    rc = seapp_context_lookup(SEAPP_TYPE, pkgInfo->uid, 0,
-                              pkgInfo->seinfo, pkgInfo->name, pathname, ctx);
+    rc = seapp_context_lookup(SEAPP_TYPE, pkgInfo ? pkgInfo->uid : uid, 0,
+                              pkgInfo ? pkgInfo->seinfo : seinfo, pkgInfo ? pkgInfo->name : pkgname, pathname, ctx);
     if (rc < 0)
         goto err;
 
@@ -962,7 +969,9 @@ err:
 
 #define RESTORECON_LAST "security.restorecon_last"
 
-static int restorecon_sb(const char *pathname, const struct stat *sb, bool setrestoreconlast, bool nochange, bool verbose)
+static int restorecon_sb(const char *pathname, const struct stat *sb,
+                         bool setrestoreconlast, bool nochange, bool verbose,
+                         const char *seinfo, uid_t uid)
 {
     char *secontext = NULL;
     char *oldsecontext = NULL;
@@ -988,7 +997,7 @@ static int restorecon_sb(const char *pathname, const struct stat *sb, bool setre
         /* Same as above for all children of /data/data and /data/user. */
         setrestoreconlast = false;
 
-        if (pkgdir_selabel_lookup(pathname, &secontext) < 0)
+        if (pkgdir_selabel_lookup(pathname, seinfo, uid, &secontext) < 0)
             goto err;
     }
 
@@ -1020,7 +1029,10 @@ err:
     goto out;
 }
 
-int selinux_android_restorecon(const char* pathname, unsigned int flags)
+static int selinux_android_restorecon_common(const char* pathname,
+                                             const char *seinfo,
+                                             uid_t uid,
+                                             unsigned int flags)
 {
     bool nochange = (flags & SELINUX_ANDROID_RESTORECON_NOCHANGE) ? true : false;
     bool verbose = (flags & SELINUX_ANDROID_RESTORECON_VERBOSE) ? true : false;
@@ -1048,7 +1060,7 @@ int selinux_android_restorecon(const char* pathname, unsigned int flags)
         if (lstat(pathname, &sb) < 0)
             return -1;
 
-        return restorecon_sb(pathname, &sb, false, nochange, verbose);
+        return restorecon_sb(pathname, &sb, false, nochange, verbose, seinfo, uid);
     }
 
     /*
@@ -1107,7 +1119,7 @@ int selinux_android_restorecon(const char* pathname, unsigned int flags)
             }
             /* fall through */
         default:
-            (void) restorecon_sb(ftsent->fts_path, ftsent->fts_statp, true, nochange, verbose);
+            (void) restorecon_sb(ftsent->fts_path, ftsent->fts_statp, true, nochange, verbose, seinfo, uid);
             break;
         }
     }
@@ -1117,6 +1129,19 @@ out:
     (void) fts_close(fts);
     error = sverrno;
     return error;
+}
+
+int selinux_android_restorecon(const char *file, unsigned int flags)
+{
+    return selinux_android_restorecon_common(file, NULL, -1, flags);
+}
+
+int selinux_android_restorecon_pkgdir(const char *pkgdir,
+                                      const char *seinfo,
+                                      uid_t uid,
+                                      unsigned int flags)
+{
+    return selinux_android_restorecon_common(pkgdir, seinfo, uid, flags | SELINUX_ANDROID_RESTORECON_DATADATA);
 }
 
 struct selabel_handle* selinux_android_file_context_handle(void)
