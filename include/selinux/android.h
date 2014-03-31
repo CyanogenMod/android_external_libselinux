@@ -35,6 +35,11 @@ extern int selinux_android_setfilecon(const char *pkgdir,
 #define SELINUX_ANDROID_RESTORECON_DATADATA 16
 extern int selinux_android_restorecon(const char *file, unsigned int flags);
 
+extern int selinux_android_restorecon_pkgdir(const char *pkgdir,
+                                             const char *seinfo,
+                                             uid_t uid,
+                                             unsigned int flags);
+
 extern int selinux_android_seapp_context_reload(void);
 
 #ifdef __cplusplus
