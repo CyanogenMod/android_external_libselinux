@@ -66,6 +66,13 @@ struct prefix_str {
 	char is_prefix;
 };
 
+static void free_prefix_str(struct prefix_str *p)
+{
+	if (!p)
+		return;
+	free(p->str);
+}
+
 struct seapp_context {
 	/* input selectors */
 	char isSystemServer;
@@ -80,6 +87,21 @@ struct seapp_context {
 	char *sebool;
 	enum levelFrom levelFrom;
 };
+
+static void free_seapp_context(struct seapp_context *s)
+{
+	if (!s)
+		return;
+
+	free_prefix_str(&s->user);
+	free(s->seinfo);
+	free_prefix_str(&s->name);
+	free_prefix_str(&s->path);
+	free(s->domain);
+	free(s->type);
+	free(s->level);
+	free(s->sebool);
+}
 
 static int seapp_context_cmp(const void *A, const void *B)
 {
@@ -158,6 +180,21 @@ static int seapp_context_cmp(const void *A, const void *B)
 static struct seapp_context **seapp_contexts = NULL;
 static int nspec = 0;
 
+static void free_seapp_contexts(void)
+{
+	int n;
+
+	if (!seapp_contexts)
+		return;
+
+	for (n = 0; n < nspec; n++)
+		free_seapp_context(seapp_contexts[n]);
+
+	free(seapp_contexts);
+	seapp_contexts = NULL;
+	nspec = 0;
+}
+
 int selinux_android_seapp_context_reload(void)
 {
 	FILE *fp = NULL;
@@ -177,20 +214,7 @@ int selinux_android_seapp_context_reload(void)
 		return -1;
 	}
 
-	if (seapp_contexts) {
-		for (n = 0; n < nspec; n++) {
-			cur = seapp_contexts[n];
-			free(cur->user.str);
-			free(cur->seinfo);
-			free(cur->name.str);
-			free(cur->path.str);
-			free(cur->domain);
-			free(cur->type);
-			free(cur->level);
-			free(cur->sebool);
-		}
-		free(seapp_contexts);
-	}
+	free_seapp_contexts();
 
 	nspec = 0;
 	while (fgets(line_buf, sizeof line_buf - 1, fp)) {
@@ -224,14 +248,18 @@ int selinux_android_seapp_context_reload(void)
 			goto oom;
 
 		token = strtok_r(p, " \t", &saveptr);
-		if (!token)
+		if (!token) {
+			free_seapp_context(cur);
 			goto err;
+		}
 
 		while (1) {
 			name = token;
 			value = strchr(name, '=');
-			if (!value)
+			if (!value) {
+				free_seapp_context(cur);
 				goto err;
+			}
 			*value++ = 0;
 
 			if (!strcasecmp(name, "isSystemServer")) {
@@ -240,40 +268,52 @@ int selinux_android_seapp_context_reload(void)
 				else if (!strcasecmp(value, "false"))
 					cur->isSystemServer = 0;
 				else {
+					free_seapp_context(cur);
 					goto err;
 				}
 			} else if (!strcasecmp(name, "user")) {
 				cur->user.str = strdup(value);
-				if (!cur->user.str)
+				if (!cur->user.str) {
+					free_seapp_context(cur);
 					goto oom;
+				}
 				cur->user.len = strlen(cur->user.str);
 				if (cur->user.str[cur->user.len-1] == '*')
 					cur->user.is_prefix = 1;
 			} else if (!strcasecmp(name, "seinfo")) {
 				cur->seinfo = strdup(value);
-				if (!cur->seinfo)
+				if (!cur->seinfo) {
+					free_seapp_context(cur);
 					goto oom;
+				}
 			} else if (!strcasecmp(name, "name")) {
 				cur->name.str = strdup(value);
-				if (!cur->name.str)
+				if (!cur->name.str) {
+					free_seapp_context(cur);
 					goto oom;
+				}
 				cur->name.len = strlen(cur->name.str);
 				if (cur->name.str[cur->name.len-1] == '*')
 					cur->name.is_prefix = 1;
 			} else if (!strcasecmp(name, "domain")) {
 				cur->domain = strdup(value);
-				if (!cur->domain)
+				if (!cur->domain) {
+					free_seapp_context(cur);
 					goto oom;
+				}
 			} else if (!strcasecmp(name, "type")) {
 				cur->type = strdup(value);
-				if (!cur->type)
+				if (!cur->type) {
+					free_seapp_context(cur);
 					goto oom;
+				}
 			} else if (!strcasecmp(name, "levelFromUid")) {
 				if (!strcasecmp(value, "true"))
 					cur->levelFrom = LEVELFROM_APP;
 				else if (!strcasecmp(value, "false"))
 					cur->levelFrom = LEVELFROM_NONE;
 				else {
+					free_seapp_context(cur);
 					goto err;
 				}
 			} else if (!strcasecmp(name, "levelFrom")) {
@@ -286,29 +326,46 @@ int selinux_android_seapp_context_reload(void)
 				else if (!strcasecmp(value, "all"))
 					cur->levelFrom = LEVELFROM_ALL;
 				else {
+					free_seapp_context(cur);
 					goto err;
 				}
 			} else if (!strcasecmp(name, "level")) {
 				cur->level = strdup(value);
-				if (!cur->level)
+				if (!cur->level) {
+					free_seapp_context(cur);
 					goto oom;
+				}
 			} else if (!strcasecmp(name, "path")) {
 				cur->path.str = strdup(value);
-				if (!cur->path.str)
+				if (!cur->path.str) {
+					free_seapp_context(cur);
 					goto oom;
+				}
 				cur->path.len = strlen(cur->path.str);
 				if (cur->path.str[cur->path.len-1] == '*')
 					cur->path.is_prefix = 1;
 			} else if (!strcasecmp(name, "sebool")) {
 				cur->sebool = strdup(value);
-				if (!cur->sebool)
+				if (!cur->sebool) {
+					free_seapp_context(cur);
 					goto oom;
-			} else
+				}
+			} else {
+				free_seapp_context(cur);
 				goto err;
+			}
 
 			token = strtok_r(NULL, " \t", &saveptr);
 			if (!token)
 				break;
+		}
+
+		if (cur->name.str &&
+		    (!cur->seinfo || !strcmp(cur->seinfo, "default"))) {
+			selinux_log(SELINUX_ERROR, "%s:  No specific seinfo value specified with name=\"%s\", on line %u:  insecure configuration!\n",
+				    seapp_contexts_file[i - 1], cur->name.str, lineno);
+			free_seapp_context(cur);
+			goto err;
 		}
 
 		seapp_contexts[nspec] = cur;
@@ -341,13 +398,15 @@ out:
 	return ret;
 
 err:
-	selinux_log(SELINUX_ERROR, "%s:  Error reading %s, line %u, name %s, value %s\n",
-		    __FUNCTION__, seapp_contexts_file[i - 1], lineno, name, value);
+	selinux_log(SELINUX_ERROR, "%s:  Invalid entry on line %u\n",
+		    seapp_contexts_file[i - 1], lineno);
+	free_seapp_contexts();
 	ret = -1;
 	goto out;
 oom:
 	selinux_log(SELINUX_ERROR, 
 		    "%s:  Out of memory\n", __FUNCTION__);
+	free_seapp_contexts();
 	ret = -1;
 	goto out;
 }
