@@ -33,6 +33,7 @@ typedef struct spec {
 	int matches;		/* number of matching pathnames */
 	int hasMetaChars;	/* regular expression has meta-chars */
 	int stem_id;		/* indicates which stem-compression item */
+	size_t prefix_len;      /* length of fixed path prefix */
 } spec_t;
 
 /* A regular expression stem */
@@ -184,7 +185,7 @@ static int nodups_specs(struct saved_data *data, const char *path)
 static void spec_hasMetaChars(struct spec *spec)
 {
 	char *c;
-	int len;
+	size_t len;
 	char *end;
 
 	c = spec->regex_str;
@@ -192,6 +193,7 @@ static void spec_hasMetaChars(struct spec *spec)
 	end = c + len;
 
 	spec->hasMetaChars = 0;
+	spec->prefix_len = len;
 
 	/* Look at each character in the RE specification string for a 
 	 * meta character. Return when any meta character reached. */
@@ -208,6 +210,7 @@ static void spec_hasMetaChars(struct spec *spec)
 		case '(':
 		case '{':
 			spec->hasMetaChars = 1;
+			spec->prefix_len = c - spec->regex_str;
 			return;
 		case '\\':	/* skip the next character */
 			c++;
@@ -566,8 +569,9 @@ static void closef(struct selabel_handle *rec)
 	free(data);
 }
 
-static struct selabel_lookup_rec *lookup(struct selabel_handle *rec,
-					 const char *key, int type)
+static struct selabel_lookup_rec *lookup_common(struct selabel_handle *rec,
+						const char *key, int type,
+						bool partial)
 {
 	struct saved_data *data = (struct saved_data *)rec->data;
 	spec_t *spec_arr = data->spec_arr;
@@ -578,6 +582,7 @@ static struct selabel_lookup_rec *lookup(struct selabel_handle *rec,
 	char *clean_key = NULL;
 	const char *prev_slash, *next_slash;
 	unsigned int sofar = 0;
+	size_t keylen = strlen(key);
 
 	if (!data->nspec) {
 		errno = ENOENT;
@@ -628,6 +633,29 @@ static struct selabel_lookup_rec *lookup(struct selabel_handle *rec,
 				spec_arr[i].matches++;
 				break;
 			}
+
+			if (partial) {
+				/*
+				 * We already checked above to see if the
+				 * key has any direct match.  Now we just need
+				 * to check for partial matches.
+				 * Since POSIX regex functions do not support
+				 * partial match, we crudely approximate it
+				 * via a prefix match.
+				 * This is imprecise and could yield
+				 * false positives or negatives but
+				 * appears to work with our current set of
+				 * regex strings.
+				 * Convert to using pcre partial match
+				 * if/when pcre becomes available in Android.
+				 */
+				if (spec_arr[i].prefix_len > 1 &&
+				    !strncmp(key, spec_arr[i].regex_str,
+					     keylen < spec_arr[i].prefix_len ?
+					     keylen : spec_arr[i].prefix_len))
+					break;
+			}
+
 			if (rc == REG_NOMATCH)
 				continue;
 			/* else it's an error */
@@ -646,6 +674,17 @@ static struct selabel_lookup_rec *lookup(struct selabel_handle *rec,
 finish:
 	free(clean_key);
 	return ret;
+}
+
+static struct selabel_lookup_rec *lookup(struct selabel_handle *rec,
+					 const char *key, int type)
+{
+	return lookup_common(rec, key, type, false);
+}
+
+static bool partial_match(struct selabel_handle *rec, const char *key)
+{
+	return lookup_common(rec, key, 0, true) ? true : false;
 }
 
 static void stats(struct selabel_handle *rec)
@@ -686,6 +725,7 @@ int selabel_file_init(struct selabel_handle *rec, const struct selinux_opt *opts
 	rec->func_close = &closef;
 	rec->func_stats = &stats;
 	rec->func_lookup = &lookup;
+	rec->func_partial_match = &partial_match;
 
 	return init(rec, opts, nopts);
 }

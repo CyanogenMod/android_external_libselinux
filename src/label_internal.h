@@ -54,6 +54,7 @@ struct selabel_handle {
 						   const char *key, int type);
 	void (*func_close) (struct selabel_handle *h);
 	void (*func_stats) (struct selabel_handle *h);
+	bool (*func_partial_match) (struct selabel_handle *h, const char *key);
 
 	/* supports backend-specific state information */
 	void *data;

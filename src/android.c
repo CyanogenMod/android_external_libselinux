@@ -25,6 +25,7 @@
 #include "policy.h"
 #include "callbacks.h"
 #include "selinux_internal.h"
+#include "label_internal.h"
 
 /*
  * XXX Where should this configuration file be located?
@@ -1098,6 +1099,7 @@ static int selinux_android_restorecon_common(const char* pathname,
     bool recurse = (flags & SELINUX_ANDROID_RESTORECON_RECURSE) ? true : false;
     bool force = (flags & SELINUX_ANDROID_RESTORECON_FORCE) ? true : false;
     bool datadata = (flags & SELINUX_ANDROID_RESTORECON_DATADATA) ? true : false;
+    bool issys = strcmp(pathname, "/sys") == 0 ? true : false;
     struct stat sb;
     FTS *fts;
     FTSENT *ftsent;
@@ -1173,6 +1175,10 @@ static int selinux_android_restorecon_common(const char* pathname,
             if (!datadata &&
                 (!strcmp(ftsent->fts_path, DATA_DATA_PATH) ||
                  !strcmp(ftsent->fts_path, DATA_USER_PATH))) {
+                fts_set(fts, ftsent, FTS_SKIP);
+                continue;
+            }
+            if (issys && !selabel_partial_match(sehandle, ftsent->fts_path)) {
                 fts_set(fts, ftsent, FTS_SKIP);
                 continue;
             }
