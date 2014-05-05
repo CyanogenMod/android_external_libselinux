@@ -6,6 +6,7 @@
 #ifndef _SELABEL_H_
 #define _SELABEL_H_
 
+#include <stdbool.h>
 #include <sys/types.h>
 #include <selinux/selinux.h>
 
@@ -97,6 +98,8 @@ int selabel_lookup(struct selabel_handle *handle, char **con,
 		   const char *key, int type);
 int selabel_lookup_raw(struct selabel_handle *handle, char **con,
 		       const char *key, int type);
+
+bool selabel_partial_match(struct selabel_handle *handle, const char *key);
 
 /**
  * selabel_stats - log labeling operation statistics.
