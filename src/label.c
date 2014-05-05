@@ -119,6 +119,18 @@ int selabel_lookup(struct selabel_handle *rec, char **con,
 	return *con ? 0 : -1;
 }
 
+bool selabel_partial_match(struct selabel_handle *rec, const char *key)
+{
+	if (!rec->func_partial_match) {
+		/*
+		 * If the label backend does not support partial matching,
+		 * then assume a match is possible.
+		 */
+		return true;
+	}
+	return rec->func_partial_match(rec, key);
+}
+
 void selabel_close(struct selabel_handle *rec)
 {
 	rec->func_close(rec);
