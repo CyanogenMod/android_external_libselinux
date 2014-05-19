@@ -1030,7 +1030,7 @@ err:
 #define RESTORECON_LAST "security.restorecon_last"
 
 static int restorecon_sb(const char *pathname, const struct stat *sb,
-                         bool setrestoreconlast, bool nochange, bool verbose,
+                         bool nochange, bool verbose,
                          const char *seinfo, uid_t uid)
 {
     char *secontext = NULL;
@@ -1038,25 +1038,19 @@ static int restorecon_sb(const char *pathname, const struct stat *sb,
     int rc = 0;
 
     if (selabel_lookup(sehandle, &secontext, pathname, sb->st_mode) < 0)
-        return -1;
+        return 0;  /* no match, but not an error */
 
     if (lgetfilecon(pathname, &oldsecontext) < 0)
         goto err;
 
     /*
-     * Disable setting restorecon_last on /data/data or /data/user
-     * since their labeling is based on seapp_contexts and seinfo
-     * assignments rather than file_contexts and is managed by
-     * installd rather than init.
+     * For subdirectories of /data/data or /data/user, we ignore selabel_lookup()
+     * and use pkgdir_selabel_lookup() instead. Files within those directories
+     * have different labeling rules, based off of /seapp_contexts, and
+     * installd is responsible for managing these labels instead of init.
      */
-    if (!strcmp(pathname, DATA_DATA_PATH) || !strcmp(pathname, DATA_USER_PATH))
-        setrestoreconlast = false;
-
     if (!strncmp(pathname, DATA_DATA_PREFIX, sizeof(DATA_DATA_PREFIX)-1) ||
         !strncmp(pathname, DATA_USER_PREFIX, sizeof(DATA_USER_PREFIX)-1)) {
-        /* Same as above for all children of /data/data and /data/user. */
-        setrestoreconlast = false;
-
         if (pkgdir_selabel_lookup(pathname, seinfo, uid, &secontext) < 0)
             goto err;
     }
@@ -1070,9 +1064,6 @@ static int restorecon_sb(const char *pathname, const struct stat *sb,
                 goto err;
         }
     }
-
-    if (setrestoreconlast && !nochange && S_ISDIR(sb->st_mode))
-        setxattr(pathname, RESTORECON_LAST, fc_digest, sizeof fc_digest, 0);
 
     rc = 0;
 
@@ -1100,6 +1091,7 @@ static int selinux_android_restorecon_common(const char* pathname,
     bool force = (flags & SELINUX_ANDROID_RESTORECON_FORCE) ? true : false;
     bool datadata = (flags & SELINUX_ANDROID_RESTORECON_DATADATA) ? true : false;
     bool issys = strcmp(pathname, "/sys") == 0 ? true : false;
+    bool setrestoreconlast = true;
     struct stat sb;
     FTS *fts;
     FTSENT *ftsent;
@@ -1121,7 +1113,7 @@ static int selinux_android_restorecon_common(const char* pathname,
         if (lstat(pathname, &sb) < 0)
             return -1;
 
-        return restorecon_sb(pathname, &sb, false, nochange, verbose, seinfo, uid);
+        return restorecon_sb(pathname, &sb, nochange, verbose, seinfo, uid);
     }
 
     /*
@@ -1130,15 +1122,18 @@ static int selinux_android_restorecon_common(const char* pathname,
      * assignments rather than file_contexts and is managed by
      * installd rather than init.
      */
-    if (!strcmp(pathname, DATA_DATA_PATH) || !strcmp(pathname, DATA_USER_PATH))
-        force = true;
+    if (!strncmp(pathname, DATA_DATA_PREFIX, sizeof(DATA_DATA_PREFIX)-1) ||
+        !strncmp(pathname, DATA_USER_PREFIX, sizeof(DATA_USER_PREFIX)-1))
+        setrestoreconlast = false;
 
-    size = getxattr(pathname, RESTORECON_LAST, xattr_value, sizeof fc_digest);
-    if (!force && size == sizeof fc_digest && memcmp(fc_digest, xattr_value, sizeof fc_digest) == 0) {
-        selinux_log(SELINUX_INFO,
-                    "SELinux: Skipping restorecon_recursive(%s)\n",
-                    pathname);
-        return 0;
+    if (setrestoreconlast) {
+        size = getxattr(pathname, RESTORECON_LAST, xattr_value, sizeof fc_digest);
+        if (!force && size == sizeof fc_digest && memcmp(fc_digest, xattr_value, sizeof fc_digest) == 0) {
+            selinux_log(SELINUX_INFO,
+                        "SELinux: Skipping restorecon_recursive(%s)\n",
+                        pathname);
+            return 0;
+        }
     }
 
     fts = fts_open(paths, ftsflags, NULL);
@@ -1185,15 +1180,19 @@ static int selinux_android_restorecon_common(const char* pathname,
             }
             /* fall through */
         default:
-            (void) restorecon_sb(ftsent->fts_path, ftsent->fts_statp, true, nochange, verbose, seinfo, uid);
+            error |= restorecon_sb(ftsent->fts_path, ftsent->fts_statp, nochange, verbose, seinfo, uid);
             break;
         }
     }
 
+    // Labeling successful. Mark the top level directory as completed.
+    if (setrestoreconlast && !nochange && !error)
+        setxattr(pathname, RESTORECON_LAST, fc_digest, sizeof fc_digest, 0);
+
 out:
     sverrno = errno;
     (void) fts_close(fts);
-    error = sverrno;
+    errno = sverrno;
     return error;
 }
 
