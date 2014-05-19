@@ -1172,15 +1172,16 @@ static int selinux_android_restorecon_common(const char* pathname,
             fts_set(fts, ftsent, FTS_SKIP);
             continue;
         case FTS_D:
-            if (!datadata &&
-                (!strcmp(ftsent->fts_path, DATA_DATA_PATH) ||
-                 !strcmp(ftsent->fts_path, DATA_USER_PATH))) {
-                fts_set(fts, ftsent, FTS_SKIP);
-                continue;
-            }
             if (issys && !selabel_partial_match(sehandle, ftsent->fts_path)) {
                 fts_set(fts, ftsent, FTS_SKIP);
                 continue;
+            }
+            if (!datadata &&
+                (!strcmp(ftsent->fts_path, DATA_DATA_PATH) ||
+                 !strcmp(ftsent->fts_path, DATA_USER_PATH))) {
+                // Don't label anything below this directory.
+                fts_set(fts, ftsent, FTS_SKIP);
+                // but fall through and make sure we label the directory itself
             }
             /* fall through */
         default:
