@@ -1178,7 +1178,7 @@ static int selinux_android_restorecon_common(const char* pathname,
             }
             if (!datadata &&
                 (!strcmp(ftsent->fts_path, DATA_DATA_PATH) ||
-                 !strcmp(ftsent->fts_path, DATA_USER_PATH))) {
+                 !strncmp(ftsent->fts_path, DATA_USER_PREFIX, sizeof(DATA_USER_PREFIX)-1))) {
                 // Don't label anything below this directory.
                 fts_set(fts, ftsent, FTS_SKIP);
                 // but fall through and make sure we label the directory itself
