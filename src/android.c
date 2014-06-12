@@ -22,6 +22,7 @@
 #include <selinux/avc.h>
 #include <mincrypt/sha.h>
 #include <private/android_filesystem_config.h>
+#include <log/log.h>
 #include "policy.h"
 #include "callbacks.h"
 #include "selinux_internal.h"
@@ -47,6 +48,12 @@ static const char *const sepolicy_file[] = {
 	"/sepolicy",
 	"/data/security/current/sepolicy",
 	NULL };
+
+static const struct selinux_opt seopts_service[] = {
+    { SELABEL_OPT_PATH, "/service_contexts" },
+    { SELABEL_OPT_PATH, "/data/security/current/service_contexts" },
+    { 0, NULL }
+};
 
 enum levelFrom {
 	LEVELFROM_NONE,
@@ -859,6 +866,25 @@ static void file_context_init(void)
         sehandle = file_context_open();
 }
 
+static struct selabel_handle *service_context_open(void)
+{
+    struct selabel_handle *handle = NULL;
+
+    set_policy_index();
+    handle = selabel_open(SELABEL_CTX_ANDROID_PROP,
+            &seopts_service[policy_index], 1);
+
+    if (!handle) {
+        selinux_log(SELINUX_ERROR, "%s: Error getting service context handle (%s)\n",
+                __FUNCTION__, strerror(errno));
+    } else {
+        selinux_log(SELINUX_INFO, "SELinux: Loaded service contexts from %s.\n",
+                seopts_service[policy_index].value);
+    }
+
+    return handle;
+}
+
 static pthread_once_t fc_once = PTHREAD_ONCE_INIT;
 
 struct pkgInfo {
@@ -1282,6 +1308,11 @@ struct selabel_handle* selinux_android_file_context_handle(void)
     return file_context_open();
 }
 
+struct selabel_handle* selinux_android_service_context_handle(void)
+{
+    return service_context_open();
+}
+
 void selinux_android_set_sehandle(const struct selabel_handle *hndl)
 {
     sehandle = (struct selabel_handle *) hndl;
@@ -1373,4 +1404,27 @@ int selinux_android_load_policy(void)
 	set_selinuxmnt(mnt);
 
     return selinux_android_load_policy_helper(false);
+}
+
+int selinux_log_callback(int type, const char *fmt, ...)
+{
+    va_list ap;
+    int priority;
+
+    switch(type) {
+    case SELINUX_WARNING:
+        priority = ANDROID_LOG_WARN;
+        break;
+    case SELINUX_INFO:
+        priority = ANDROID_LOG_INFO;
+        break;
+    default:
+        priority = ANDROID_LOG_ERROR;
+        break;
+    }
+
+    va_start(ap, fmt);
+    LOG_PRI_VA(priority, "SELinux", fmt, ap);
+    va_end(ap);
+    return 0;
 }
