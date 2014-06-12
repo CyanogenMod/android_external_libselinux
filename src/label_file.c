@@ -569,16 +569,17 @@ static void closef(struct selabel_handle *rec)
 	free(data);
 }
 
-static struct selabel_lookup_rec *lookup_common(struct selabel_handle *rec,
-						const char *key, int type,
-						bool partial)
+static spec_t *lookup_common(struct selabel_handle *rec,
+			     const char *key,
+			     int type,
+			     bool partial)
 {
 	struct saved_data *data = (struct saved_data *)rec->data;
 	spec_t *spec_arr = data->spec_arr;
 	int i, rc, file_stem;
 	mode_t mode = (mode_t)type;
 	const char *buf;
-	struct selabel_lookup_rec *ret = NULL;
+	spec_t *ret = NULL;
 	char *clean_key = NULL;
 	const char *prev_slash, *next_slash;
 	unsigned int sofar = 0;
@@ -669,7 +670,7 @@ static struct selabel_lookup_rec *lookup_common(struct selabel_handle *rec,
 		goto finish;
 	}
 
-	ret = &spec_arr[i].lr;
+	ret = &spec_arr[i];
 
 finish:
 	free(clean_key);
@@ -679,12 +680,71 @@ finish:
 static struct selabel_lookup_rec *lookup(struct selabel_handle *rec,
 					 const char *key, int type)
 {
-	return lookup_common(rec, key, type, false);
+	spec_t *spec;
+	spec = lookup_common(rec, key, type, false);
+	if (spec)
+		return &spec->lr;
+	return NULL;
 }
 
 static bool partial_match(struct selabel_handle *rec, const char *key)
 {
 	return lookup_common(rec, key, 0, true) ? true : false;
+}
+
+static struct selabel_lookup_rec *lookup_best_match(struct selabel_handle *rec,
+						    const char *key,
+						    const char **aliases,
+						    int type)
+{
+	size_t n, i;
+	int best = -1;
+	spec_t **specs;
+	size_t prefix_len = 0;
+	struct selabel_lookup_rec *lr = NULL;
+
+	if (!aliases || !aliases[0])
+		return lookup(rec, key, type);
+
+	for (n = 0; aliases[n]; n++)
+		;
+
+	specs = calloc(n+1, sizeof(spec_t *));
+	if (!specs)
+		return NULL;
+	specs[0] = lookup_common(rec, key, type, false);
+	if (specs[0]) {
+		if (!specs[0]->hasMetaChars) {
+			/* exact match on key */
+			lr = &specs[0]->lr;
+			goto out;
+		}
+		best = 0;
+		prefix_len = specs[0]->prefix_len;
+	}
+	for (i = 1; i <= n; i++) {
+		specs[i] = lookup_common(rec, aliases[i-1], type, false);
+		if (specs[i]) {
+			if (!specs[i]->hasMetaChars) {
+				/* exact match on alias */
+				lr = &specs[i]->lr;
+				goto out;
+			}
+			if (specs[i]->prefix_len > prefix_len) {
+				best = i;
+				prefix_len = specs[i]->prefix_len;
+			}
+		}
+	}
+
+	if (best >= 0) {
+		/* longest fixed prefix match on key or alias */
+		lr = &specs[best]->lr;
+	}
+
+out:
+	free(specs);
+	return lr;
 }
 
 static void stats(struct selabel_handle *rec)
@@ -726,6 +786,7 @@ int selabel_file_init(struct selabel_handle *rec, const struct selinux_opt *opts
 	rec->func_stats = &stats;
 	rec->func_lookup = &lookup;
 	rec->func_partial_match = &partial_match;
+	rec->func_lookup_best_match = &lookup_best_match;
 
 	return init(rec, opts, nopts);
 }
