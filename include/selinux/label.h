@@ -101,6 +101,9 @@ int selabel_lookup_raw(struct selabel_handle *handle, char **con,
 
 bool selabel_partial_match(struct selabel_handle *handle, const char *key);
 
+int selabel_lookup_best_match(struct selabel_handle *rec, char **con,
+			      const char *key, const char **aliases, int type);
+
 /**
  * selabel_stats - log labeling operation statistics.
  * @handle: specifies backend instance to query
