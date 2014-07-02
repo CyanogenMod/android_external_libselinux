@@ -1410,6 +1410,7 @@ int selinux_log_callback(int type, const char *fmt, ...)
 {
     va_list ap;
     int priority;
+    char *strp;
 
     switch(type) {
     case SELINUX_WARNING:
@@ -1424,7 +1425,11 @@ int selinux_log_callback(int type, const char *fmt, ...)
     }
 
     va_start(ap, fmt);
-    LOG_PRI_VA(priority, "SELinux", fmt, ap);
+    if (vasprintf(&strp, fmt, ap) != -1) {
+        LOG_PRI(priority, "SELinux", "%s", strp);
+        LOG_EVENT_STRING(AUDITD_LOG_TAG, strp);
+        free(strp);
+    }
     va_end(ap);
     return 0;
 }
