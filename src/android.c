@@ -1174,6 +1174,9 @@ err:
     goto out;
 }
 
+#define SYS_PATH "/sys"
+#define SYS_PREFIX SYS_PATH "/"
+
 static int selinux_android_restorecon_common(const char* pathname,
                                              const char *seinfo,
                                              uid_t uid,
@@ -1184,7 +1187,7 @@ static int selinux_android_restorecon_common(const char* pathname,
     bool recurse = (flags & SELINUX_ANDROID_RESTORECON_RECURSE) ? true : false;
     bool force = (flags & SELINUX_ANDROID_RESTORECON_FORCE) ? true : false;
     bool datadata = (flags & SELINUX_ANDROID_RESTORECON_DATADATA) ? true : false;
-    bool issys = strcmp(pathname, "/sys") == 0 ? true : false;
+    bool issys = (!strcmp(pathname, SYS_PATH) || !strncmp(pathname, SYS_PREFIX, sizeof(SYS_PREFIX)-1)) ? true : false;
     bool setrestoreconlast = true;
     struct stat sb;
     FTS *fts;
@@ -1218,6 +1221,10 @@ static int selinux_android_restorecon_common(const char* pathname,
      */
     if (!strncmp(pathname, DATA_DATA_PREFIX, sizeof(DATA_DATA_PREFIX)-1) ||
         !strncmp(pathname, DATA_USER_PREFIX, sizeof(DATA_USER_PREFIX)-1))
+        setrestoreconlast = false;
+
+    /* Also ignore on /sys since it is regenerated on each boot regardless. */
+    if (issys)
         setrestoreconlast = false;
 
     if (setrestoreconlast) {
