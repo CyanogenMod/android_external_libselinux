@@ -1193,7 +1193,7 @@ static int selinux_android_restorecon_common(const char* pathname,
     FTS *fts;
     FTSENT *ftsent;
     char *const paths[2] = { __UNCONST(pathname), NULL };
-    int ftsflags = FTS_COMFOLLOW | FTS_NOCHDIR | FTS_XDEV | FTS_PHYSICAL;
+    int ftsflags = FTS_NOCHDIR | FTS_XDEV | FTS_PHYSICAL;
     int error, sverrno;
     char xattr_value[FC_DIGEST_SIZE];
     ssize_t size;
