@@ -158,6 +158,8 @@ static void free_prefix_str(struct prefix_str *p)
 struct seapp_context {
 	/* input selectors */
 	char isSystemServer;
+	bool isOwnerSet;
+	bool isOwner;
 	struct prefix_str user;
 	char *seinfo;
 	struct prefix_str name;
@@ -194,6 +196,10 @@ static int seapp_context_cmp(const void *A, const void *B)
 	/* Give precedence to isSystemServer=true. */
 	if (s1->isSystemServer != s2->isSystemServer)
 		return (s1->isSystemServer ? -1 : 1);
+
+	/* Give precedence to a specified isOwner= over an unspecified isOwner=. */
+	if (s1->isOwnerSet != s2->isOwnerSet)
+		return (s1->isOwnerSet ? -1 : 1);
 
 	/* Give precedence to a specified user= over an unspecified user=. */
 	if (s1->user.str && !s2->user.str)
@@ -353,6 +359,16 @@ int selinux_android_seapp_context_reload(void)
 					free_seapp_context(cur);
 					goto err;
 				}
+			} else if (!strcasecmp(name, "isOwner")) {
+				cur->isOwnerSet = true;
+				if (!strcasecmp(value, "true"))
+					cur->isOwner = true;
+				else if (!strcasecmp(value, "false"))
+					cur->isOwner = false;
+				else {
+					free_seapp_context(cur);
+					goto err;
+				}
 			} else if (!strcasecmp(name, "user")) {
 				cur->user.str = strdup(value);
 				if (!cur->user.str) {
@@ -463,12 +479,14 @@ int selinux_android_seapp_context_reload(void)
 		int i;
 		for (i = 0; i < nspec; i++) {
 			cur = seapp_contexts[i];
-			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s user=%s seinfo=%s name=%s path=%s sebool=%s -> domain=%s type=%s level=%s levelFrom=%s",
-			__FUNCTION__,
-			cur->isSystemServer ? "true" : "false", cur->user.str,
-			cur->seinfo, cur->name.str, cur->path.str, cur->sebool, cur->domain,
-			cur->type, cur->level,
-			levelFromName[cur->levelFrom]);
+			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s isOwner=%s user=%s seinfo=%s name=%s path=%s sebool=%s -> domain=%s type=%s level=%s levelFrom=%s",
+                        __FUNCTION__,
+                        cur->isSystemServer ? "true" : "false",
+                        cur->isOwnerSet ? (cur->isOwner ? "true" : "false") : "null",
+                        cur->user.str,
+                        cur->seinfo, cur->name.str, cur->path.str, cur->sebool, cur->domain,
+                        cur->type, cur->level,
+                        levelFromName[cur->levelFrom]);
 		}
 	}
 #endif
@@ -520,6 +538,7 @@ static int seapp_context_lookup(enum seapp_kind kind,
 				const char *path,
 				context_t ctx)
 {
+	bool isOwner;
 	const char *username = NULL;
 	struct seapp_context *cur = NULL;
 	int i;
@@ -530,6 +549,7 @@ static int seapp_context_lookup(enum seapp_kind kind,
 	__selinux_once(once, seapp_context_init);
 
 	userid = uid / AID_USER;
+	isOwner = (userid == 0);
 	appid = uid % AID_USER;
 	if (appid < AID_APP) {
 		for (n = 0; n < android_id_count; n++) {
@@ -555,6 +575,9 @@ static int seapp_context_lookup(enum seapp_kind kind,
 		cur = seapp_contexts[i];
 
 		if (cur->isSystemServer != isSystemServer)
+			continue;
+
+		if (cur->isOwnerSet && cur->isOwner != isOwner)
 			continue;
 
 		if (cur->user.str) {
