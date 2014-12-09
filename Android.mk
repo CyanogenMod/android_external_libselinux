@@ -52,6 +52,9 @@ LOCAL_C_INCLUDES := external/pcre
 LOCAL_WHOLE_STATIC_LIBRARIES := libpcre
 # 1003 corresponds to auditd, from system/core/logd/event.logtags
 LOCAL_CFLAGS := -DAUDITD_LOG_TAG=1003
+# mapping.c has redundant check of array p_in->perms.
+LOCAL_CLANG_CFLAGS += -Wno-pointer-bool-conversion
+
 include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -82,4 +85,7 @@ LOCAL_C_INCLUDES := external/pcre
 LOCAL_SHARED_LIBRARIES := liblog libpcre
 # 1003 corresponds to auditd, from system/core/logd/event.logtags
 LOCAL_CFLAGS := -DAUDITD_LOG_TAG=1003
+# mapping.c has redundant check of array p_in->perms.
+LOCAL_CLANG_CFLAGS += -Wno-pointer-bool-conversion
+
 include $(BUILD_SHARED_LIBRARY)
