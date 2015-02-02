@@ -265,7 +265,7 @@ static int compile_regex(struct saved_data *data, spec_t *spec, const char **err
 	}
 
 	spec->sd = pcre_study(spec->regex, 0, &tmperrbuf);
-	if (!spec->sd) {
+	if (!spec->sd && tmperrbuf) {
 		if (errbuf)
 			*errbuf=tmperrbuf;
 		return -1;
