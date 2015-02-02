@@ -5,6 +5,7 @@
 #include <errno.h>
 #include "selinux_internal.h"
 #include <selinux/avc.h>
+#include "avc_internal.h"
 
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 static int selinux_enabled;
@@ -39,6 +40,7 @@ int selinux_check_access(const char * scon, const char * tcon, const char *class
        sclass = string_to_security_class(class);
        if (sclass == 0) {
 	       rc = errno;
+	       avc_log(SELINUX_ERROR, "Unknown class %s", class);
 	       if (security_deny_unknown() == 0)
 		       return 0;
 	       errno = rc;
@@ -48,6 +50,7 @@ int selinux_check_access(const char * scon, const char * tcon, const char *class
        av = string_to_av_perm(sclass, perm);
        if (av == 0) {
 	       rc = errno;
+	       avc_log(SELINUX_ERROR, "Unknown permission %s for class %s", perm, class);
 	       if (security_deny_unknown() == 0)
 		       return 0;
 	       errno = rc;
