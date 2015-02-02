@@ -17,11 +17,7 @@
 #include "policy.h"
 #include "mapping.h"
 
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
-
 #define MAXVECTORS 8*sizeof(access_vector_t)
-
-static pthread_once_t once = PTHREAD_ONCE_INIT;
 
 struct discover_class_node {
 	char *name;
@@ -160,28 +156,6 @@ err2:
 err1:
 	free(node);
 	return NULL;
-}
-
-void flush_class_cache(void)
-{
-	struct discover_class_node *cur = discover_class_cache, *prev = NULL;
-	size_t i;
-
-	while (cur != NULL) {
-		free(cur->name);
-
-		for (i=0 ; i<MAXVECTORS ; i++)
-			free(cur->perms[i]);
-
-		free(cur->perms);
-
-		prev = cur;
-		cur = cur->next;
-
-		free(prev);
-	}
-
-	discover_class_cache = NULL;
 }
 
 security_class_t string_to_security_class(const char *s)
