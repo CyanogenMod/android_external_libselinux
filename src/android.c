@@ -172,7 +172,6 @@ struct seapp_context {
 	char *domain;
 	char *type;
 	char *level;
-	char *sebool;
 	enum levelFrom levelFrom;
 };
 
@@ -188,7 +187,6 @@ static void free_seapp_context(struct seapp_context *s)
 	free(s->domain);
 	free(s->type);
 	free(s->level);
-	free(s->sebool);
 }
 
 static int seapp_context_cmp(const void *A, const void *B)
@@ -258,12 +256,6 @@ static int seapp_context_cmp(const void *A, const void *B)
 		if (s1->path.is_prefix && s1->path.len != s2->path.len)
 			return (s1->path.len > s2->path.len) ? -1 : 1;
 	}
-
-        /* Give precedence to a specified sebool= over an unspecified sebool=. */
-        if (s1->sebool && !s2->sebool)
-                return -1;
-        if (!s1->sebool && s2->sebool)
-                return 1;
 
 	/* Anything else has equal precedence. */
 	return 0;
@@ -446,12 +438,6 @@ int selinux_android_seapp_context_reload(void)
 				cur->path.len = strlen(cur->path.str);
 				if (cur->path.str[cur->path.len-1] == '*')
 					cur->path.is_prefix = 1;
-			} else if (!strcasecmp(name, "sebool")) {
-				cur->sebool = strdup(value);
-				if (!cur->sebool) {
-					free_seapp_context(cur);
-					goto oom;
-				}
 			} else {
 				free_seapp_context(cur);
 				goto err;
@@ -483,12 +469,12 @@ int selinux_android_seapp_context_reload(void)
 		int i;
 		for (i = 0; i < nspec; i++) {
 			cur = seapp_contexts[i];
-			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s isOwner=%s user=%s seinfo=%s name=%s path=%s sebool=%s -> domain=%s type=%s level=%s levelFrom=%s",
+			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s isOwner=%s user=%s seinfo=%s name=%s path=%s -> domain=%s type=%s level=%s levelFrom=%s",
                         __FUNCTION__,
                         cur->isSystemServer ? "true" : "false",
                         cur->isOwnerSet ? (cur->isOwner ? "true" : "false") : "null",
                         cur->user.str,
-                        cur->seinfo, cur->name.str, cur->path.str, cur->sebool, cur->domain,
+                        cur->seinfo, cur->name.str, cur->path.str, cur->domain,
                         cur->type, cur->level,
                         levelFromName[cur->levelFrom]);
 		}
@@ -629,17 +615,6 @@ static int seapp_context_lookup(enum seapp_kind kind,
 			continue;
 		else if (kind == SEAPP_DOMAIN && !cur->domain)
 			continue;
-
-		if (cur->sebool) {
-			int value = security_get_boolean_active(cur->sebool);
-			if (value == 0)
-				continue;
-			else if (value == -1) {
-				selinux_log(SELINUX_ERROR, \
-				"Could not find boolean: %s ", cur->sebool);
-				goto err;
-			}
-		}
 
 		if (kind == SEAPP_TYPE) {
 			if (context_type_set(ctx, cur->type))
