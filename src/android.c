@@ -189,11 +189,14 @@ static void free_seapp_context(struct seapp_context *s)
 	free(s->level);
 }
 
+static bool seapp_contexts_dup = false;
+
 static int seapp_context_cmp(const void *A, const void *B)
 {
 	const struct seapp_context *const *sp1 = (const struct seapp_context *const *) A;
 	const struct seapp_context *const *sp2 = (const struct seapp_context *const *) B;
 	const struct seapp_context *s1 = *sp1, *s2 = *sp2;
+	bool dup;
 
 	/* Give precedence to isSystemServer=true. */
 	if (s1->isSystemServer != s2->isSystemServer)
@@ -255,6 +258,29 @@ static int seapp_context_cmp(const void *A, const void *B)
 		/* Give precedence to a longer prefix over a shorter prefix. */
 		if (s1->path.is_prefix && s1->path.len != s2->path.len)
 			return (s1->path.len > s2->path.len) ? -1 : 1;
+	}
+
+	/*
+	 * Check for a duplicated entry on the input selectors.
+	 * We already compared isSystemServer, isOwnerSet, and isOwner above.
+	 * We also have already checked that both entries specify the same
+	 * string fields, so if s1 has a non-NULL string, then so does s2.
+	 */
+	dup = (!s1->user.str || !strcmp(s1->user.str, s2->user.str)) &&
+		(!s1->seinfo || !strcmp(s1->seinfo, s2->seinfo)) &&
+		(!s1->name.str || !strcmp(s1->name.str, s2->name.str)) &&
+		(!s1->path.str || !strcmp(s1->path.str, s2->path.str));
+	if (dup) {
+		seapp_contexts_dup = true;
+		selinux_log(SELINUX_ERROR, "seapp_contexts:  Duplicated entry\n");
+		if (s1->user.str)
+			selinux_log(SELINUX_ERROR, " user=%s\n", s1->user.str);
+		if (s1->seinfo)
+			selinux_log(SELINUX_ERROR, " seinfo=%s\n", s1->seinfo);
+		if (s1->name.str)
+			selinux_log(SELINUX_ERROR, " name=%s\n", s1->name.str);
+		if (s1->path.str)
+			selinux_log(SELINUX_ERROR, " path=%s\n", s1->path.str);
 	}
 
 	/* Anything else has equal precedence. */
@@ -499,6 +525,9 @@ int selinux_android_seapp_context_reload(void)
 
 	qsort(seapp_contexts, nspec, sizeof(struct seapp_context *),
 	      seapp_context_cmp);
+
+	if (seapp_contexts_dup)
+		goto err;
 
 #if DEBUG
 	{
