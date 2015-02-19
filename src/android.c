@@ -85,52 +85,56 @@ static void set_policy_index(void)
 	if (fd_base < 0)
 		return;
 
-	if (fstat(fd_base, &sb_base) < 0) {
-		close(fd_base);
-		return;
-	}
+	if (fstat(fd_base, &sb_base) < 0)
+		goto close_base;
 
 	fd_override = open(POLICY_OVERRIDE_VERSION, O_RDONLY | O_NOFOLLOW);
-	if (fd_override < 0) {
-		close(fd_base);
-		return;
-	}
+	if (fd_override < 0)
+		goto close_base;
 
-	if (fstat(fd_override, &sb_override) < 0) {
-		close(fd_base);
-		close(fd_override);
-		return;
-	}
+	if (fstat(fd_override, &sb_override) < 0)
+		goto close_override;
 
-	if (sb_base.st_size != sb_override.st_size) {
-		close(fd_base);
-		close(fd_override);
-		return;
-	}
+	if (sb_base.st_size != sb_override.st_size)
+		goto close_override;
 
 	map_base = mmap(NULL, sb_base.st_size, PROT_READ, MAP_PRIVATE, fd_base, 0);
-	if (map_base == MAP_FAILED) {
-		close(fd_base);
-		close(fd_override);
-		return;
-	}
+	if (map_base == MAP_FAILED)
+		goto close_override;
 
 	map_override = mmap(NULL, sb_override.st_size, PROT_READ, MAP_PRIVATE, fd_override, 0);
-	if (map_override == MAP_FAILED) {
-		munmap(map_base, sb_base.st_size);
-		close(fd_base);
-		close(fd_override);
-		return;
-	}
+	if (map_override == MAP_FAILED)
+		goto unmap_base;
 
-	if (memcmp(map_base, map_override, sb_base.st_size) == 0)
-		policy_index = 1;
+	if (memcmp(map_base, map_override, sb_base.st_size) != 0)
+		goto unmap_override;
 
+	if (access(sepolicy_file[1], R_OK) != 0)
+		goto unmap_override;
 
-	close(fd_base);
-	close(fd_override);
-	munmap(map_base, sb_base.st_size);
+	if (access(seopts[1].value, R_OK) != 0)
+		goto unmap_override;
+
+	if (access(seopts_prop[1].value, R_OK) != 0)
+		goto unmap_override;
+
+	if (access(seopts_service[1].value, R_OK) != 0)
+		goto unmap_override;
+
+	if (access(seapp_contexts_file[1], R_OK) != 0)
+		goto unmap_override;
+
+	policy_index = 1;
+
+unmap_override:
 	munmap(map_override, sb_override.st_size);
+unmap_base:
+	munmap(map_base, sb_base.st_size);
+close_override:
+	close(fd_override);
+close_base:
+	close(fd_base);
+	return;
 }
 
 #if DEBUG
