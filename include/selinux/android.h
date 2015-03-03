@@ -24,7 +24,7 @@ extern int selinux_android_load_policy(void);
 extern int selinux_android_reload_policy(void);
 
 extern int selinux_android_setcontext(uid_t uid,
-				      int isSystemServer,
+				      bool isSystemServer,
 				      const char *seinfo,
 				      const char *name);
 
