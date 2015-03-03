@@ -161,7 +161,7 @@ static void free_prefix_str(struct prefix_str *p)
 
 struct seapp_context {
 	/* input selectors */
-	char isSystemServer;
+	bool isSystemServer;
 	bool isOwnerSet;
 	bool isOwner;
 	struct prefix_str user;
@@ -374,9 +374,9 @@ int selinux_android_seapp_context_reload(void)
 
 			if (!strcasecmp(name, "isSystemServer")) {
 				if (!strcasecmp(value, "true"))
-					cur->isSystemServer = 1;
+					cur->isSystemServer = true;
 				else if (!strcasecmp(value, "false"))
-					cur->isSystemServer = 0;
+					cur->isSystemServer = false;
 				else {
 					free_seapp_context(cur);
 					goto err;
@@ -587,7 +587,7 @@ enum seapp_kind {
 
 static int seapp_context_lookup(enum seapp_kind kind,
 				uid_t uid,
-				int isSystemServer,
+				bool isSystemServer,
 				const char *seinfo,
 				const char *pkgname,
 				const char *path,
@@ -801,7 +801,7 @@ oom:
 }
 
 int selinux_android_setcontext(uid_t uid,
-			       int isSystemServer,
+			       bool isSystemServer,
 			       const char *seinfo,
 			       const char *pkgname)
 {
