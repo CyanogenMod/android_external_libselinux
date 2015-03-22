@@ -47,9 +47,8 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(common_SRC_FILES) $(common_HOST_FILES) src/android.c
 LOCAL_MODULE:= libselinux
 LOCAL_MODULE_TAGS := eng
-LOCAL_STATIC_LIBRARIES := libmincrypt
 LOCAL_C_INCLUDES := external/pcre
-LOCAL_WHOLE_STATIC_LIBRARIES := libpcre
+LOCAL_WHOLE_STATIC_LIBRARIES := libminshacrypt libpcre
 # 1003 corresponds to auditd, from system/core/logd/event.logtags
 LOCAL_CFLAGS := -DAUDITD_LOG_TAG=1003
 include $(BUILD_STATIC_LIBRARY)
