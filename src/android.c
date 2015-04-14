@@ -1056,7 +1056,7 @@ struct pkgInfo *package_info_lookup(const char *name)
 /* The path prefixes of package data directories. */
 #define DATA_DATA_PATH "/data/data"
 #define DATA_USER_PATH "/data/user"
-#define EXPAND_USER_PATH "/mnt/expand/????????-????-????-????-????????????/user"
+#define EXPAND_USER_PATH "/mnt/expand/\?\?\?\?\?\?\?\?-\?\?\?\?-\?\?\?\?-\?\?\?\?-\?\?\?\?\?\?\?\?\?\?\?\?/user"
 #define DATA_DATA_PREFIX DATA_DATA_PATH "/"
 #define DATA_USER_PREFIX DATA_USER_PATH "/"
 
@@ -1310,7 +1310,7 @@ static int selinux_android_restorecon_common(const char* pathname,
             }
 
             if (!datadata &&
-                (!strncmp(ftsent->fts_path, DATA_DATA_PREFIX, sizeof(DATA_DATA_PREFIX)-1) ||
+                (!strcmp(ftsent->fts_path, DATA_DATA_PATH) ||
                  !strncmp(ftsent->fts_path, DATA_USER_PREFIX, sizeof(DATA_USER_PREFIX)-1) ||
                  !fnmatch(EXPAND_USER_PATH, ftsent->fts_path, FNM_LEADING_DIR|FNM_PATHNAME))) {
                 // Don't label anything below this directory.
