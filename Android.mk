@@ -37,7 +37,8 @@ common_HOST_FILES := \
 	src/init.c \
 	src/label.c \
 	src/label_file.c \
-	src/label_android_property.c
+	src/label_android_property.c \
+	src/label_support.c
 
 
 common_COPY_HEADERS_TO := selinux
@@ -102,3 +103,20 @@ LOCAL_COPY_HEADERS := $(common_COPY_HEADERS)
 LOCAL_WHOLE_STATIC_LIBRARIES := libpcre
 LOCAL_C_INCLUDES := external/pcre
 include $(BUILD_HOST_SHARED_LIBRARY)
+
+#################################
+include $(CLEAR_VARS)
+LOCAL_CFLAGS := -DHOST
+
+ifeq ($(HOST_OS),darwin)
+LOCAL_CFLAGS += -DDARWIN
+endif
+
+LOCAL_MODULE := sefcontext_compile
+LOCAL_MODULE_TAGS := eng
+LOCAL_C_INCLUDES := ../src/label_file.h
+LOCAL_SRC_FILES := utils/sefcontext_compile.c
+LOCAL_STATIC_LIBRARIES := libselinux
+LOCAL_WHOLE_STATIC_LIBRARIES := libpcre
+LOCAL_C_INCLUDES := external/pcre
+include $(BUILD_HOST_EXECUTABLE)
