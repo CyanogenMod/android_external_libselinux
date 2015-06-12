@@ -28,6 +28,7 @@
 #include "selinux_internal.h"
 #include "label_internal.h"
 #include <fnmatch.h>
+#include <limits.h>
 
 /*
  * XXX Where should this configuration file be located?
@@ -1212,7 +1213,7 @@ err:
 #define SYS_PATH "/sys"
 #define SYS_PREFIX SYS_PATH "/"
 
-static int selinux_android_restorecon_common(const char* pathname,
+static int selinux_android_restorecon_common(const char* pathname_orig,
                                              const char *seinfo,
                                              uid_t uid,
                                              unsigned int flags)
@@ -1222,12 +1223,13 @@ static int selinux_android_restorecon_common(const char* pathname,
     bool recurse = (flags & SELINUX_ANDROID_RESTORECON_RECURSE) ? true : false;
     bool force = (flags & SELINUX_ANDROID_RESTORECON_FORCE) ? true : false;
     bool datadata = (flags & SELINUX_ANDROID_RESTORECON_DATADATA) ? true : false;
-    bool issys = (!strcmp(pathname, SYS_PATH) || !strncmp(pathname, SYS_PREFIX, sizeof(SYS_PREFIX)-1)) ? true : false;
+    bool issys;
     bool setrestoreconlast = true;
     struct stat sb;
     FTS *fts;
     FTSENT *ftsent;
-    char *const paths[2] = { __UNCONST(pathname), NULL };
+    char *pathname;
+    char * paths[2] = { NULL , NULL };
     int ftsflags = FTS_NOCHDIR | FTS_XDEV | FTS_PHYSICAL;
     int error, sverrno;
     char xattr_value[FC_DIGEST_SIZE];
@@ -1241,11 +1243,28 @@ static int selinux_android_restorecon_common(const char* pathname,
     if (!fc_sehandle)
         return 0;
 
-    if (!recurse) {
-        if (lstat(pathname, &sb) < 0)
-            return -1;
+    // convert passed-in pathname to canonical pathname
+    pathname = realpath(pathname_orig, NULL);
+    if (!pathname) {
+        sverrno = errno;
+        selinux_log(SELINUX_ERROR, "SELinux: Could not get canonical path %s restorecon: %s.\n",
+                pathname_orig, strerror(errno));
+        errno = sverrno;
+        error = -1;
+        goto cleanup;
+    }
+    paths[0] = pathname;
+    issys = (!strcmp(pathname, SYS_PATH)
+            || !strncmp(pathname, SYS_PREFIX, sizeof(SYS_PREFIX)-1)) ? true : false;
 
-        return restorecon_sb(pathname, &sb, nochange, verbose, seinfo, uid);
+    if (!recurse) {
+        if (lstat(pathname, &sb) < 0) {
+            error = -1;
+            goto cleanup;
+        }
+
+        error = restorecon_sb(pathname, &sb, nochange, verbose, seinfo, uid);
+        goto cleanup;
     }
 
     /*
@@ -1269,13 +1288,16 @@ static int selinux_android_restorecon_common(const char* pathname,
             selinux_log(SELINUX_INFO,
                         "SELinux: Skipping restorecon_recursive(%s)\n",
                         pathname);
-            return 0;
+            error = 0;
+            goto cleanup;
         }
     }
 
     fts = fts_open(paths, ftsflags, NULL);
-    if (!fts)
-        return -1;
+    if (!fts) {
+        error = -1;
+        goto cleanup;
+    }
 
     error = 0;
     while ((ftsent = fts_read(fts)) != NULL) {
@@ -1332,6 +1354,8 @@ out:
     sverrno = errno;
     (void) fts_close(fts);
     errno = sverrno;
+cleanup:
+    free(pathname);
     return error;
 }
 
