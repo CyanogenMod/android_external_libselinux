@@ -55,23 +55,15 @@ struct selabel_handle {
 	void (*func_close) (struct selabel_handle *h);
 	void (*func_stats) (struct selabel_handle *h);
 	bool (*func_partial_match) (struct selabel_handle *h, const char *key);
-	struct selabel_lookup_rec *(*func_lookup_best_match)
-						    (struct selabel_handle *h,
-						    const char *key,
-						    const char **aliases,
-						    int type);
+	struct selabel_lookup_rec *(*func_lookup_best_match) (struct selabel_handle *h,
+							 const char *key,
+							 const char **aliases,
+							 int type);
 
 	/* supports backend-specific state information */
 	void *data;
 
-	/*
-	 * The main spec file used. Note for file contexts the local and/or
-	 * homedirs could also have been used to resolve a context.
-	 */
-	char *spec_file;
-
 	/* substitution support */
-	struct selabel_sub *dist_subs;
 	struct selabel_sub *subs;
 };
 
@@ -81,11 +73,5 @@ struct selabel_handle {
 extern int
 selabel_validate(struct selabel_handle *rec,
 		 struct selabel_lookup_rec *contexts) hidden;
-
-/*
- * The read_spec_entries function may be used to
- * replace sscanf to read entries from spec files.
- */
-extern int read_spec_entries(char *line_buf, int num_args, ...);
 
 #endif				/* _SELABEL_INTERNAL_H_ */
