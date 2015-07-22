@@ -29,6 +29,8 @@
 #include "label_internal.h"
 #include <fnmatch.h>
 #include <limits.h>
+#include <sys/vfs.h>
+#include <linux/magic.h>
 
 /*
  * XXX Where should this configuration file be located?
@@ -1226,6 +1228,7 @@ static int selinux_android_restorecon_common(const char* pathname_orig,
     bool issys;
     bool setrestoreconlast = true;
     struct stat sb;
+    struct statfs sfsb;
     FTS *fts;
     FTSENT *ftsent;
     char *pathname;
@@ -1281,6 +1284,12 @@ static int selinux_android_restorecon_common(const char* pathname_orig,
     /* Also ignore on /sys since it is regenerated on each boot regardless. */
     if (issys)
         setrestoreconlast = false;
+
+    /* Ignore files on in-memory filesystems */
+    if (statfs(pathname, &sfsb) == 0) {
+        if (sfsb.f_type == RAMFS_MAGIC || sfsb.f_type == TMPFS_MAGIC)
+            setrestoreconlast = false;
+    }
 
     if (setrestoreconlast) {
         size = getxattr(pathname, RESTORECON_LAST, xattr_value, sizeof fc_digest);
