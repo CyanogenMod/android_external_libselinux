@@ -44,8 +44,8 @@ static char const * const seapp_contexts_file[] = {
 	NULL };
 
 static const struct selinux_opt seopts[] = {
-	{ SELABEL_OPT_PATH, "/file_contexts" },
-	{ SELABEL_OPT_PATH, "/data/security/current/file_contexts" },
+	{ SELABEL_OPT_PATH, "/file_contexts.bin" },
+	{ SELABEL_OPT_PATH, "/data/security/current/file_contexts.bin" },
 	{ 0, NULL } };
 
 static const char *const sepolicy_file[] = {
