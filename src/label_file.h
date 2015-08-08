@@ -392,12 +392,13 @@ static inline int process_line(struct selabel_handle *rec,
 		return items;
 
 	if (items < 2) {
-		selinux_log(SELINUX_WARNING,
-			    "%s:  line %u is missing fields, skipping\n", path,
+		selinux_log(SELINUX_ERROR,
+			    "%s:  line %u is missing fields\n", path,
 			    lineno);
 		if (items == 1)
 			free(regex);
-		return 0;
+		errno = EINVAL;
+		return -1;
 	} else if (items == 2) {
 		/* The type field is optional. */
 		context = type;
@@ -424,10 +425,12 @@ static inline int process_line(struct selabel_handle *rec,
 	spec_arr[nspec].regex_str = regex;
 	if (rec->validating &&
 			    compile_regex(data, &spec_arr[nspec], &errbuf)) {
-		selinux_log(SELINUX_WARNING,
+		selinux_log(SELINUX_ERROR,
 			   "%s:  line %u has invalid regex %s:  %s\n",
 			   path, lineno, regex,
 			   (errbuf ? errbuf : "out of memory"));
+		errno = EINVAL;
+		return -1;
 	}
 
 	/* Convert the type string to a mode format */
@@ -437,10 +440,11 @@ static inline int process_line(struct selabel_handle *rec,
 		mode_t mode = string_to_mode(type);
 
 		if (mode == (mode_t)-1) {
-			selinux_log(SELINUX_WARNING,
+			selinux_log(SELINUX_ERROR,
 				   "%s:  line %u has invalid file type %s\n",
 				   path, lineno, type);
-			mode = 0;
+			errno = EINVAL;
+			return -1;
 		}
 		spec_arr[nspec].mode = mode;
 	}
@@ -453,9 +457,11 @@ static inline int process_line(struct selabel_handle *rec,
 
 	if (strcmp(context, "<<none>>") && rec->validating) {
 		if (selabel_validate(rec, &spec_arr[nspec].lr) < 0) {
-			selinux_log(SELINUX_WARNING,
+			selinux_log(SELINUX_ERROR,
 				    "%s:  line %u has invalid context %s\n",
 				    path, lineno, spec_arr[nspec].lr.ctx_raw);
+			errno = EINVAL;
+			return -1;
 		}
 	}
 
