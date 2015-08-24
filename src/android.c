@@ -1383,10 +1383,17 @@ int selinux_android_restorecon_pkgdir(const char *pkgdir,
 
 struct selabel_handle* selinux_android_file_context_handle(void)
 {
+    char *path = NULL;
     struct selabel_handle *sehandle;
+    struct selinux_opt fc_opts[] = {
+        { SELABEL_OPT_PATH, path },
+        { SELABEL_OPT_BASEONLY, (char *)1 }
+    };
 
     set_policy_index();
-    sehandle = selabel_open(SELABEL_CTX_FILE, &seopts[policy_index], 1);
+    fc_opts[0].value = seopts[policy_index].value;
+
+    sehandle = selabel_open(SELABEL_CTX_FILE, fc_opts, 2);
 
     if (!sehandle) {
         selinux_log(SELINUX_ERROR, "%s: Error getting file context handle (%s)\n",
@@ -1398,7 +1405,7 @@ struct selabel_handle* selinux_android_file_context_handle(void)
         return NULL;
     }
     selinux_log(SELINUX_INFO, "SELinux: Loaded file_contexts contexts from %s.\n",
-            seopts[policy_index].value);
+            fc_opts[0].value);
 
     return sehandle;
 }
