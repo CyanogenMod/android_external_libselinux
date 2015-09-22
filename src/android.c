@@ -31,6 +31,7 @@
 #include <limits.h>
 #include <sys/vfs.h>
 #include <linux/magic.h>
+#include <libgen.h>
 
 /*
  * XXX Where should this configuration file be located?
@@ -1231,7 +1232,7 @@ static int selinux_android_restorecon_common(const char* pathname_orig,
     struct statfs sfsb;
     FTS *fts;
     FTSENT *ftsent;
-    char *pathname;
+    char *pathname = NULL, *pathdnamer = NULL, *pathdname, *pathbname;
     char * paths[2] = { NULL , NULL };
     int ftsflags = FTS_NOCHDIR | FTS_XDEV | FTS_PHYSICAL;
     int error, sverrno;
@@ -1246,16 +1247,28 @@ static int selinux_android_restorecon_common(const char* pathname_orig,
     if (!fc_sehandle)
         return 0;
 
-    // convert passed-in pathname to canonical pathname
-    pathname = realpath(pathname_orig, NULL);
-    if (!pathname) {
-        sverrno = errno;
-        selinux_log(SELINUX_ERROR, "SELinux: Could not get canonical path %s restorecon: %s.\n",
-                pathname_orig, strerror(errno));
-        errno = sverrno;
-        error = -1;
-        goto cleanup;
+    /*
+     * Convert passed-in pathname to canonical pathname by resolving realpath of
+     * containing dir, then appending last component name.
+     */
+    pathbname = basename(pathname_orig);
+    if (!strcmp(pathbname, "/") || !strcmp(pathbname, ".") || !strcmp(pathbname, "..")) {
+        pathname = realpath(pathname_orig, NULL);
+        if (!pathname)
+            goto realpatherr;
+    } else {
+        pathdname = dirname(pathname_orig);
+        pathdnamer = realpath(pathdname, NULL);
+        if (!pathdnamer)
+            goto realpatherr;
+        if (!strcmp(pathdnamer, "/"))
+            error = asprintf(&pathname, "/%s", pathbname);
+        else
+            error = asprintf(&pathname, "%s/%s", pathdnamer, pathbname);
+        if (error < 0)
+            goto oom;
     }
+
     paths[0] = pathname;
     issys = (!strcmp(pathname, SYS_PATH)
             || !strncmp(pathname, SYS_PREFIX, sizeof(SYS_PREFIX)-1)) ? true : false;
@@ -1364,8 +1377,22 @@ out:
     (void) fts_close(fts);
     errno = sverrno;
 cleanup:
+    free(pathdnamer);
     free(pathname);
     return error;
+oom:
+    sverrno = errno;
+    selinux_log(SELINUX_ERROR, "%s:  Out of memory\n", __FUNCTION__);
+    errno = sverrno;
+    error = -1;
+    goto cleanup;
+realpatherr:
+    sverrno = errno;
+    selinux_log(SELINUX_ERROR, "SELinux: Could not get canonical path for %s restorecon: %s.\n",
+            pathname_orig, strerror(errno));
+    errno = sverrno;
+    error = -1;
+    goto cleanup;
 }
 
 int selinux_android_restorecon(const char *file, unsigned int flags)
