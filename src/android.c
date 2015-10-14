@@ -173,6 +173,8 @@ struct seapp_context {
 	char *seinfo;
 	struct prefix_str name;
 	struct prefix_str path;
+	bool isPrivAppSet;
+	bool isPrivApp;
 	/* outputs */
 	char *domain;
 	char *type;
@@ -264,6 +266,10 @@ static int seapp_context_cmp(const void *A, const void *B)
 		if (s1->path.is_prefix && s1->path.len != s2->path.len)
 			return (s1->path.len > s2->path.len) ? -1 : 1;
 	}
+
+	/* Give precedence to a specified isPrivApp= over an unspecified isPrivApp=. */
+	if (s1->isPrivAppSet != s2->isPrivAppSet)
+		return (s1->isPrivAppSet ? -1 : 1);
 
 	/*
 	 * Check for a duplicated entry on the input selectors.
@@ -419,6 +425,10 @@ int selinux_android_seapp_context_reload(void)
 					free_seapp_context(cur);
 					goto oom;
 				}
+				if (strstr(value, ":")) {
+					free_seapp_context(cur);
+					goto err;
+				}
 			} else if (!strcasecmp(name, "name")) {
 				if (cur->name.str) {
 					free_seapp_context(cur);
@@ -505,6 +515,16 @@ int selinux_android_seapp_context_reload(void)
 				cur->path.len = strlen(cur->path.str);
 				if (cur->path.str[cur->path.len-1] == '*')
 					cur->path.is_prefix = 1;
+			} else if (!strcasecmp(name, "isPrivApp")) {
+				cur->isPrivAppSet = true;
+				if (!strcasecmp(value, "true"))
+					cur->isPrivApp = true;
+				else if (!strcasecmp(value, "false"))
+					cur->isPrivApp = false;
+				else {
+					free_seapp_context(cur);
+					goto err;
+				}
 			} else {
 				free_seapp_context(cur);
 				goto err;
@@ -539,14 +559,15 @@ int selinux_android_seapp_context_reload(void)
 		int i;
 		for (i = 0; i < nspec; i++) {
 			cur = seapp_contexts[i];
-			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s isOwner=%s user=%s seinfo=%s name=%s path=%s -> domain=%s type=%s level=%s levelFrom=%s",
-                        __FUNCTION__,
-                        cur->isSystemServer ? "true" : "false",
-                        cur->isOwnerSet ? (cur->isOwner ? "true" : "false") : "null",
-                        cur->user.str,
-                        cur->seinfo, cur->name.str, cur->path.str, cur->domain,
-                        cur->type, cur->level,
-                        levelFromName[cur->levelFrom]);
+			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s isOwner=%s user=%s seinfo=%s name=%s path=%s isPrivApp=%s -> domain=%s type=%s level=%s levelFrom=%s",
+				__FUNCTION__,
+				cur->isSystemServer ? "true" : "false",
+				cur->isOwnerSet ? (cur->isOwner ? "true" : "false") : "null",
+				cur->user.str,
+				cur->seinfo, cur->name.str, cur->path.str,
+				cur->isPrivAppSet ? (cur->isPrivApp ? "true" : "false") : "null",
+				cur->domain, cur->type, cur->level,
+				levelFromName[cur->levelFrom]);
 		}
 	}
 #endif
@@ -590,6 +611,31 @@ enum seapp_kind {
 	SEAPP_DOMAIN
 };
 
+#define PRIVILEGED_APP_STR ":privapp"
+static bool is_app_privileged(const char *seinfo)
+{
+	return strstr(seinfo, PRIVILEGED_APP_STR) != NULL;
+}
+
+static int seinfo_parse(char *dest, const char *src, size_t size)
+{
+	size_t len;
+	char *p;
+
+	if ((p = strchr(src, ':')) != NULL)
+		len = p - src;
+	else
+		len = strlen(src);
+
+	if (len > size - 1)
+		return -1;
+
+	strncpy(dest, src, len);
+	dest[len] = '\0';
+
+	return 0;
+}
+
 static int seapp_context_lookup(enum seapp_kind kind,
 				uid_t uid,
 				bool isSystemServer,
@@ -605,8 +651,17 @@ static int seapp_context_lookup(enum seapp_kind kind,
 	size_t n;
 	uid_t userid;
 	uid_t appid;
+	bool isPrivApp = false;
+	char parsedseinfo[BUFSIZ];
 
 	__selinux_once(once, seapp_context_init);
+
+	if (seinfo) {
+		if (seinfo_parse(parsedseinfo, seinfo, BUFSIZ))
+			goto err;
+		isPrivApp = is_app_privileged(seinfo);
+		seinfo = parsedseinfo;
+	}
 
 	userid = uid / AID_USER;
 	isOwner = (userid == 0);
@@ -667,6 +722,9 @@ static int seapp_context_lookup(enum seapp_kind kind,
 					continue;
 			}
 		}
+
+		if (cur->isPrivAppSet && cur->isPrivApp != isPrivApp)
+			continue;
 
 		if (cur->path.str) {
 			if (!path)
