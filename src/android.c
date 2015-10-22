@@ -32,6 +32,7 @@
 #include <sys/vfs.h>
 #include <linux/magic.h>
 #include <libgen.h>
+#include <packagelistparser/packagelistparser.h>
 
 /*
  * XXX Where should this configuration file be located?
@@ -974,17 +975,8 @@ static void file_context_init(void)
 
 static pthread_once_t fc_once = PTHREAD_ONCE_INIT;
 
-struct pkgInfo {
-    char *name;
-    uid_t uid;
-    bool debuggable;
-    char *dataDir;
-    char *seinfo;
-    struct pkgInfo *next;
-};
-
 #define PKGTAB_SIZE 256
-static struct pkgInfo *pkgTab[PKGTAB_SIZE];
+static struct pkg_info *pkgTab[PKGTAB_SIZE];
 
 static unsigned int pkghash(const char *pkgname)
 {
@@ -995,82 +987,41 @@ static unsigned int pkghash(const char *pkgname)
     return h & (PKGTAB_SIZE - 1);
 }
 
-/* The file containing the list of installed packages on the system */
-#define PACKAGES_LIST_FILE  "/data/system/packages.list"
+static bool pkg_parse_callback(pkg_info *info, void *userdata) {
+
+    (void) userdata;
+
+    unsigned int hash = pkghash(info->name);
+    if (pkgTab[hash])
+        info->private_data = pkgTab[hash];
+    pkgTab[hash] = info;
+    return true;
+}
 
 static void package_info_init(void)
 {
-    char *buf = NULL;
-    size_t buflen = 0;
-    ssize_t bytesread;
-    FILE *fp;
-    char *cur, *next;
-    struct pkgInfo *pkgInfo = NULL;
-    unsigned int hash;
-    unsigned long lineno = 1;
 
-    fp = fopen(PACKAGES_LIST_FILE, "r");
-    if (!fp) {
-        selinux_log(SELINUX_ERROR, "SELinux:  Could not open %s:  %s.\n",
-                    PACKAGES_LIST_FILE, strerror(errno));
+    bool rc = packagelist_parse(pkg_parse_callback, NULL);
+    if (!rc) {
+        selinux_log(SELINUX_ERROR, "SELinux: Could NOT parse package list\n");
         return;
-    }
-    while ((bytesread = getline(&buf, &buflen, fp)) > 0) {
-        pkgInfo = calloc(1, sizeof(*pkgInfo));
-        if (!pkgInfo)
-            goto err;
-        next = buf;
-        cur = strsep(&next, " \t\n");
-        if (!cur)
-            goto err;
-        pkgInfo->name = strdup(cur);
-        if (!pkgInfo->name)
-            goto err;
-        cur = strsep(&next, " \t\n");
-        if (!cur)
-            goto err;
-        pkgInfo->uid = atoi(cur);
-        if (!pkgInfo->uid)
-            goto err;
-        cur = strsep(&next, " \t\n");
-        if (!cur)
-            goto err;
-        pkgInfo->debuggable = atoi(cur);
-        cur = strsep(&next, " \t\n");
-        if (!cur)
-            goto err;
-        pkgInfo->dataDir = strdup(cur);
-        if (!pkgInfo->dataDir)
-            goto err;
-        cur = strsep(&next, " \t\n");
-        if (!cur)
-            goto err;
-        pkgInfo->seinfo = strdup(cur);
-        if (!pkgInfo->seinfo)
-            goto err;
-
-        hash = pkghash(pkgInfo->name);
-        if (pkgTab[hash])
-            pkgInfo->next = pkgTab[hash];
-        pkgTab[hash] = pkgInfo;
-
-        lineno++;
     }
 
 #if DEBUG
     {
-        unsigned int buckets, entries, chainlen, longestchain;
+        unsigned int hash, buckets, entries, chainlen, longestchain;
+        struct pkg_info *info = NULL;
 
         buckets = entries = longestchain = 0;
         for (hash = 0; hash < PKGTAB_SIZE; hash++) {
             if (pkgTab[hash]) {
                 buckets++;
                 chainlen = 0;
-                for (pkgInfo = pkgTab[hash]; pkgInfo; pkgInfo = pkgInfo->next) {
+                for (info = pkgTab[hash]; info; info = (pkg_info *)info->private_data) {
                     chainlen++;
                     selinux_log(SELINUX_INFO, "%s:  name=%s uid=%u debuggable=%s dataDir=%s seinfo=%s\n",
                                 __FUNCTION__,
-                                pkgInfo->name, pkgInfo->uid, pkgInfo->debuggable ? "true" : "false", pkgInfo->dataDir, pkgInfo->seinfo);
+                                info->name, info->uid, info->debuggable ? "true" : "false", info->data_dir, info->seinfo);
                 }
                 entries += chainlen;
                 if (longestchain < chainlen)
@@ -1081,36 +1032,21 @@ static void package_info_init(void)
     }
 #endif
 
-out:
-    free(buf);
-    fclose(fp);
-    return;
-
-err:
-    selinux_log(SELINUX_ERROR, "SELinux:  Error reading %s on line %lu.\n",
-                PACKAGES_LIST_FILE, lineno);
-    if (pkgInfo) {
-        free(pkgInfo->name);
-        free(pkgInfo->dataDir);
-        free(pkgInfo->seinfo);
-        free(pkgInfo);
-    }
-    goto out;
 }
 
 static pthread_once_t pkg_once = PTHREAD_ONCE_INIT;
 
-struct pkgInfo *package_info_lookup(const char *name)
+struct pkg_info *package_info_lookup(const char *name)
 {
-    struct pkgInfo *pkgInfo;
+    struct pkg_info *info;
     unsigned int hash;
 
     __selinux_once(pkg_once, package_info_init);
 
     hash = pkghash(name);
-    for (pkgInfo = pkgTab[hash]; pkgInfo; pkgInfo = pkgInfo->next) {
-        if (!strcmp(name, pkgInfo->name))
-            return pkgInfo;
+    for (info = pkgTab[hash]; info; info = (pkg_info *)info->private_data) {
+        if (!strcmp(name, info->name))
+            return info;
     }
     return NULL;
 }
@@ -1128,7 +1064,7 @@ static int pkgdir_selabel_lookup(const char *pathname,
                                  char **secontextp)
 {
     char *pkgname = NULL, *end = NULL;
-    struct pkgInfo *pkgInfo = NULL;
+    struct pkg_info *info = NULL;
     char *secontext = *secontextp;
     context_t ctx = NULL;
     int rc = 0;
@@ -1170,8 +1106,8 @@ static int pkgdir_selabel_lookup(const char *pathname,
     *end = '\0';
 
     if (!seinfo) {
-        pkgInfo = package_info_lookup(pkgname);
-        if (!pkgInfo) {
+        info = package_info_lookup(pkgname);
+        if (!info) {
             selinux_log(SELINUX_WARNING, "SELinux:  Could not look up information for package %s, cannot restorecon %s.\n",
                         pkgname, pathname);
             free(pkgname);
@@ -1183,8 +1119,8 @@ static int pkgdir_selabel_lookup(const char *pathname,
     if (!ctx)
         goto err;
 
-    rc = seapp_context_lookup(SEAPP_TYPE, pkgInfo ? pkgInfo->uid : uid, 0,
-                              pkgInfo ? pkgInfo->seinfo : seinfo, pkgInfo ? pkgInfo->name : pkgname, pathname, ctx);
+    rc = seapp_context_lookup(SEAPP_TYPE, info ? info->uid : uid, 0,
+                              info ? info->seinfo : seinfo, info ? info->name : pkgname, pathname, ctx);
     if (rc < 0)
         goto err;
 
@@ -1212,7 +1148,7 @@ out:
     return rc;
 err:
     selinux_log(SELINUX_ERROR, "%s:  Error looking up context for path %s, pkgname %s, seinfo %s, uid %u: %s\n",
-                __FUNCTION__, pathname, pkgname, pkgInfo->seinfo, pkgInfo->uid, strerror(errno));
+                __FUNCTION__, pathname, pkgname, info->seinfo, info->uid, strerror(errno));
     rc = -1;
     goto out;
 }
