@@ -86,6 +86,7 @@ struct selabel_handle *selabel_open(unsigned int backend,
 	rec->validating = selabel_is_validate_set(opts, nopts);
 
 	if ((*initfuncs[backend])(rec, opts, nopts)) {
+		free(rec->spec_file);
 		free(rec);
 		rec = NULL;
 	}
@@ -161,6 +162,7 @@ enum selabel_cmp_result selabel_cmp(struct selabel_handle *h1,
 void selabel_close(struct selabel_handle *rec)
 {
 	rec->func_close(rec);
+	free(rec->spec_file);
 	free(rec);
 }
 
