@@ -1054,9 +1054,12 @@ struct pkg_info *package_info_lookup(const char *name)
 /* The path prefixes of package data directories. */
 #define DATA_DATA_PATH "/data/data"
 #define DATA_USER_PATH "/data/user"
+#define DATA_USER_DE_PATH "/data/user_de"
 #define EXPAND_USER_PATH "/mnt/expand/\?\?\?\?\?\?\?\?-\?\?\?\?-\?\?\?\?-\?\?\?\?-\?\?\?\?\?\?\?\?\?\?\?\?/user"
+#define EXPAND_USER_DE_PATH "/mnt/expand/\?\?\?\?\?\?\?\?-\?\?\?\?-\?\?\?\?-\?\?\?\?-\?\?\?\?\?\?\?\?\?\?\?\?/user_de"
 #define DATA_DATA_PREFIX DATA_DATA_PATH "/"
 #define DATA_USER_PREFIX DATA_USER_PATH "/"
+#define DATA_USER_DE_PREFIX DATA_USER_DE_PATH "/"
 
 static int pkgdir_selabel_lookup(const char *pathname,
                                  const char *seinfo,
@@ -1080,8 +1083,24 @@ static int pkgdir_selabel_lookup(const char *pathname,
             pathname++;
         else
             return 0;
+    } else if (!strncmp(pathname, DATA_USER_DE_PREFIX, sizeof(DATA_USER_DE_PREFIX)-1)) {
+        pathname += sizeof(DATA_USER_DE_PREFIX) - 1;
+        while (isdigit(*pathname))
+            pathname++;
+        if (*pathname == '/')
+            pathname++;
+        else
+            return 0;
     } else if (!fnmatch(EXPAND_USER_PATH, pathname, FNM_LEADING_DIR|FNM_PATHNAME)) {
         pathname += sizeof(EXPAND_USER_PATH);
+        while (isdigit(*pathname))
+            pathname++;
+        if (*pathname == '/')
+            pathname++;
+        else
+            return 0;
+    } else if (!fnmatch(EXPAND_USER_DE_PATH, pathname, FNM_LEADING_DIR|FNM_PATHNAME)) {
+        pathname += sizeof(EXPAND_USER_DE_PATH);
         while (isdigit(*pathname))
             pathname++;
         if (*pathname == '/')
@@ -1177,7 +1196,9 @@ static int restorecon_sb(const char *pathname, const struct stat *sb,
      */
     if (!strncmp(pathname, DATA_DATA_PREFIX, sizeof(DATA_DATA_PREFIX)-1) ||
         !strncmp(pathname, DATA_USER_PREFIX, sizeof(DATA_USER_PREFIX)-1) ||
-        !fnmatch(EXPAND_USER_PATH, pathname, FNM_LEADING_DIR|FNM_PATHNAME)) {
+        !strncmp(pathname, DATA_USER_DE_PREFIX, sizeof(DATA_USER_DE_PREFIX)-1) ||
+        !fnmatch(EXPAND_USER_PATH, pathname, FNM_LEADING_DIR|FNM_PATHNAME) ||
+        !fnmatch(EXPAND_USER_DE_PATH, pathname, FNM_LEADING_DIR|FNM_PATHNAME)) {
         if (pkgdir_selabel_lookup(pathname, seinfo, uid, &secontext) < 0)
             goto err;
     }
@@ -1285,7 +1306,9 @@ static int selinux_android_restorecon_common(const char* pathname_orig,
      */
     if (!strncmp(pathname, DATA_DATA_PREFIX, sizeof(DATA_DATA_PREFIX)-1) ||
         !strncmp(pathname, DATA_USER_PREFIX, sizeof(DATA_USER_PREFIX)-1) ||
-        !fnmatch(EXPAND_USER_PATH, pathname, FNM_LEADING_DIR|FNM_PATHNAME))
+        !strncmp(pathname, DATA_USER_DE_PREFIX, sizeof(DATA_USER_DE_PREFIX)-1) ||
+        !fnmatch(EXPAND_USER_PATH, pathname, FNM_LEADING_DIR|FNM_PATHNAME) ||
+        !fnmatch(EXPAND_USER_DE_PATH, pathname, FNM_LEADING_DIR|FNM_PATHNAME))
         setrestoreconlast = false;
 
     /* Also ignore on /sys since it is regenerated on each boot regardless. */
@@ -1350,7 +1373,9 @@ static int selinux_android_restorecon_common(const char* pathname_orig,
             if (!datadata &&
                 (!strcmp(ftsent->fts_path, DATA_DATA_PATH) ||
                  !strncmp(ftsent->fts_path, DATA_USER_PREFIX, sizeof(DATA_USER_PREFIX)-1) ||
-                 !fnmatch(EXPAND_USER_PATH, ftsent->fts_path, FNM_LEADING_DIR|FNM_PATHNAME))) {
+                 !strncmp(ftsent->fts_path, DATA_USER_DE_PREFIX, sizeof(DATA_USER_DE_PREFIX)-1) ||
+                 !fnmatch(EXPAND_USER_PATH, ftsent->fts_path, FNM_LEADING_DIR|FNM_PATHNAME) ||
+                 !fnmatch(EXPAND_USER_DE_PATH, ftsent->fts_path, FNM_LEADING_DIR|FNM_PATHNAME))) {
                 // Don't label anything below this directory.
                 fts_set(fts, ftsent, FTS_SKIP);
                 // but fall through and make sure we label the directory itself
