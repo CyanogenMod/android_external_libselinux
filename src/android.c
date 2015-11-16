@@ -168,6 +168,8 @@ static void free_prefix_str(struct prefix_str *p)
 struct seapp_context {
 	/* input selectors */
 	bool isSystemServer;
+	bool isAutoPlayAppSet;
+	bool isAutoPlayApp;
 	bool isOwnerSet;
 	bool isOwner;
 	struct prefix_str user;
@@ -209,6 +211,12 @@ static int seapp_context_cmp(const void *A, const void *B)
 	/* Give precedence to isSystemServer=true. */
 	if (s1->isSystemServer != s2->isSystemServer)
 		return (s1->isSystemServer ? -1 : 1);
+
+	/* Give precedence to a specified isAutoPlayApp= over an
+	 * unspecified isAutoPlayApp=. */
+	if (s1->isAutoPlayAppSet != s2->isAutoPlayAppSet)
+		return (s1->isAutoPlayAppSet ? -1 : 1);
+
 
 	/* Give precedence to a specified isOwner= over an unspecified isOwner=. */
 	if (s1->isOwnerSet != s2->isOwnerSet)
@@ -393,6 +401,16 @@ int selinux_android_seapp_context_reload(void)
 					free_seapp_context(cur);
 					goto err;
 				}
+			} else if (!strcasecmp(name, "isAutoPlayApp")) {
+				cur->isAutoPlayAppSet = true;
+				if (!strcasecmp(value, "true"))
+					cur->isAutoPlayApp = true;
+				else if (!strcasecmp(value, "false"))
+					cur->isAutoPlayApp = false;
+				else {
+					free_seapp_context(cur);
+					goto err;
+				}
 			} else if (!strcasecmp(name, "isOwner")) {
 				cur->isOwnerSet = true;
 				if (!strcasecmp(value, "true"))
@@ -560,9 +578,11 @@ int selinux_android_seapp_context_reload(void)
 		int i;
 		for (i = 0; i < nspec; i++) {
 			cur = seapp_contexts[i];
-			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s isOwner=%s user=%s seinfo=%s name=%s path=%s isPrivApp=%s -> domain=%s type=%s level=%s levelFrom=%s",
+			selinux_log(SELINUX_INFO, "%s:  isSystemServer=%s  isAutoPlayApp=%s isOwner=%s user=%s seinfo=%s "
+					"name=%s path=%s isPrivApp=%s -> domain=%s type=%s level=%s levelFrom=%s",
 				__FUNCTION__,
 				cur->isSystemServer ? "true" : "false",
+				cur->isAutoPlayAppSet ? (cur->isAutoPlayApp ? "true" : "false") : "null",
 				cur->isOwnerSet ? (cur->isOwner ? "true" : "false") : "null",
 				cur->user.str,
 				cur->seinfo, cur->name.str, cur->path.str,
@@ -613,10 +633,7 @@ enum seapp_kind {
 };
 
 #define PRIVILEGED_APP_STR ":privapp"
-static bool is_app_privileged(const char *seinfo)
-{
-	return strstr(seinfo, PRIVILEGED_APP_STR) != NULL;
-}
+#define AUTOPLAY_APP_STR ":autoplayapp"
 
 static int seinfo_parse(char *dest, const char *src, size_t size)
 {
@@ -653,6 +670,7 @@ static int seapp_context_lookup(enum seapp_kind kind,
 	uid_t userid;
 	uid_t appid;
 	bool isPrivApp = false;
+	bool isAutoPlayApp = false;
 	char parsedseinfo[BUFSIZ];
 
 	__selinux_once(once, seapp_context_init);
@@ -660,7 +678,8 @@ static int seapp_context_lookup(enum seapp_kind kind,
 	if (seinfo) {
 		if (seinfo_parse(parsedseinfo, seinfo, BUFSIZ))
 			goto err;
-		isPrivApp = is_app_privileged(seinfo);
+		isPrivApp = strstr(seinfo, PRIVILEGED_APP_STR) ? true : false;
+		isAutoPlayApp = strstr(seinfo, AUTOPLAY_APP_STR) ? true : false;
 		seinfo = parsedseinfo;
 	}
 
@@ -691,6 +710,9 @@ static int seapp_context_lookup(enum seapp_kind kind,
 		cur = seapp_contexts[i];
 
 		if (cur->isSystemServer != isSystemServer)
+			continue;
+
+		if (cur->isAutoPlayAppSet && cur->isAutoPlayApp != isAutoPlayApp)
 			continue;
 
 		if (cur->isOwnerSet && cur->isOwner != isOwner)
