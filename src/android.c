@@ -34,6 +34,9 @@
 #include <libgen.h>
 #include <packagelistparser/packagelistparser.h>
 
+#define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
+#include <sys/_system_properties.h>
+
 /*
  * XXX Where should this configuration file be located?
  * Needs to be accessible by zygote and installd when
@@ -886,6 +889,19 @@ oom:
 	goto out;
 }
 
+int selinux_android_setcon(const char *con)
+{
+	int ret = setcon(con);
+	if (ret)
+		return ret;
+	/*
+	  System properties must be reinitialized after setcon() otherwise the
+	  previous property files will be leaked since mmap()'ed regions are not
+	  closed as a result of setcon().
+	*/
+	return __system_properties_init();
+}
+
 int selinux_android_setcontext(uid_t uid,
 			       bool isSystemServer,
 			       const char *seinfo,
@@ -922,7 +938,7 @@ int selinux_android_setcontext(uid_t uid,
 		goto err;
 
 	if (strcmp(ctx_str, orig_ctx_str)) {
-		rc = setcon(ctx_str);
+		rc = selinux_android_setcon(ctx_str);
 		if (rc < 0)
 			goto err;
 	}
