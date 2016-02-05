@@ -45,8 +45,8 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(common_SRC_FILES) $(common_HOST_FILES) src/android.c
 LOCAL_MODULE:= libselinux
 LOCAL_MODULE_TAGS := eng
-LOCAL_STATIC_LIBRARIES := libmincrypt
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include external/pcre
+LOCAL_STATIC_LIBRARIES := libcrypto_static
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
 LOCAL_WHOLE_STATIC_LIBRARIES := libpcre libpackagelistparser
 # 1003 corresponds to auditd, from system/core/logd/event.logtags
 LOCAL_CFLAGS := -DAUDITD_LOG_TAG=1003
@@ -67,7 +67,7 @@ LOCAL_SRC_FILES := $(common_HOST_FILES)
 LOCAL_MODULE:= libselinux
 LOCAL_MODULE_TAGS := eng
 LOCAL_WHOLE_STATIC_LIBRARIES := libpcre
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include external/pcre
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 include $(BUILD_HOST_STATIC_LIBRARY)
 
@@ -75,9 +75,8 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(common_SRC_FILES) $(common_HOST_FILES) src/android.c
 LOCAL_MODULE:= libselinux
 LOCAL_MODULE_TAGS := eng
-LOCAL_STATIC_LIBRARIES := libmincrypt
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include external/pcre
-LOCAL_SHARED_LIBRARIES := liblog libpcre libpackagelistparser
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
+LOCAL_SHARED_LIBRARIES := libcrypto liblog libpcre libpackagelistparser
 # 1003 corresponds to auditd, from system/core/logd/event.logtags
 LOCAL_CFLAGS := -DAUDITD_LOG_TAG=1003
 # mapping.c has redundant check of array p_in->perms.
@@ -97,7 +96,7 @@ LOCAL_SRC_FILES := $(common_HOST_FILES)
 LOCAL_MODULE:= libselinux
 LOCAL_MODULE_TAGS := eng
 LOCAL_WHOLE_STATIC_LIBRARIES := libpcre
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include external/pcre
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 include $(BUILD_HOST_SHARED_LIBRARY)
 

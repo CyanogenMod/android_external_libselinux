@@ -20,7 +20,7 @@
 #include <selinux/android.h>
 #include <selinux/label.h>
 #include <selinux/avc.h>
-#include <mincrypt/sha.h>
+#include <openssl/sha.h>
 #include <private/android_filesystem_config.h>
 #include <log/log.h>
 #include "policy.h"
@@ -946,7 +946,7 @@ oom:
 }
 
 static struct selabel_handle *fc_sehandle = NULL;
-#define FC_DIGEST_SIZE SHA_DIGEST_SIZE
+#define FC_DIGEST_SIZE SHA_DIGEST_LENGTH
 static uint8_t fc_digest[FC_DIGEST_SIZE];
 
 static bool compute_contexts_hash(const struct selinux_opt opts[], uint8_t c_digest[])
@@ -974,7 +974,7 @@ static bool compute_contexts_hash(const struct selinux_opt opts[], uint8_t c_dig
         close(fd);
         return false;
     }
-    SHA_hash(map, sb.st_size, c_digest);
+    SHA1(map, sb.st_size, c_digest);
     munmap(map, sb.st_size);
     close(fd);
 
