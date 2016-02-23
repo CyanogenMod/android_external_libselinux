@@ -34,7 +34,7 @@ static int openattr(pid_t pid, const char *attr, int flags)
 		tid = gettid();
 		rc = asprintf(&path, "/proc/self/task/%d/attr/%s", tid, attr);
 	} else {
-		errno = -EINVAL;
+		errno = EINVAL;
 		return -1;
 	}
 	if (rc < 0)
