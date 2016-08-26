@@ -45,9 +45,8 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(common_SRC_FILES) $(common_HOST_FILES) src/android.c
 LOCAL_MODULE:= libselinux
 LOCAL_MODULE_TAGS := eng
-LOCAL_STATIC_LIBRARIES := libcrypto_static
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
-LOCAL_WHOLE_STATIC_LIBRARIES := libpcre libpackagelistparser
+LOCAL_WHOLE_STATIC_LIBRARIES := libcrypto_static libpcre libpackagelistparser
 # 1003 corresponds to auditd, from system/core/logd/event.logtags
 LOCAL_CFLAGS := -DAUDITD_LOG_TAG=1003
 # mapping.c has redundant check of array p_in->perms.
